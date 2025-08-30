@@ -35,7 +35,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Excel temporary files
+# Sensitive data - Excel files with salary information
+数据/
+**/数据/
 数据/~$*.xlsx
 **/~$*.xlsx
 *.tmp
