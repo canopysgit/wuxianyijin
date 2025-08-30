@@ -1,0 +1,161 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { Database } from '@/lib/database.types';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+// 创建管理员客户端
+const supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceRoleKey);
+
+export async function POST(request: NextRequest) {
+  try {
+    const { records } = await request.json();
+
+    if (!Array.isArray(records) || records.length === 0) {
+      return NextResponse.json(
+        { error: '缺少有效的工资记录数据' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`📊 开始导入 ${records.length} 条工资记录...`);
+    
+    const startTime = Date.now();
+    const batchSize = 100;
+    let importedRecords = 0;
+    let failedRecords = 0;
+    const errors: any[] = [];
+    
+    // 计算总批次数
+    const totalBatches = Math.ceil(records.length / batchSize);
+    console.log(`📦 将分 ${totalBatches} 批处理，每批 ${batchSize} 条记录`);
+
+    // 分批处理
+    for (let i = 0; i < records.length; i += batchSize) {
+      const batch = records.slice(i, i + batchSize);
+      const batchNumber = Math.floor(i / batchSize) + 1;
+      
+      console.log(`📦 处理第 ${batchNumber}/${totalBatches} 批 (${batch.length} 条记录)`);
+      
+      try {
+        const { error, count } = await supabaseAdmin
+          .from('salary_records')
+          .upsert(batch, {
+            onConflict: 'employee_id,salary_month',
+            count: 'exact'
+          });
+
+        if (error) {
+          console.error(`❌ 第 ${batchNumber} 批批量插入错误:`, error);
+          
+          // 逐个插入处理错误
+          let batchSuccess = 0;
+          for (const record of batch) {
+            try {
+              await supabaseAdmin
+                .from('salary_records')
+                .upsert(record, { 
+                  onConflict: 'employee_id,salary_month' 
+                });
+              importedRecords++;
+              batchSuccess++;
+            } catch (singleError: any) {
+              failedRecords++;
+              errors.push({
+                employeeId: record.employee_id,
+                salaryMonth: record.salary_month,
+                error: singleError.message || '未知错误'
+              });
+            }
+          }
+          console.log(`✅ 第 ${batchNumber} 批逐个处理完成: ${batchSuccess}/${batch.length} 成功`);
+        } else {
+          importedRecords += count || batch.length;
+          console.log(`✅ 第 ${batchNumber} 批成功导入 ${count || batch.length} 条记录`);
+        }
+      } catch (batchError: any) {
+        failedRecords += batch.length;
+        batch.forEach(record => {
+          errors.push({
+            employeeId: record.employee_id,
+            salaryMonth: record.salary_month,
+            error: batchError.message || '批量处理失败'
+          });
+        });
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    
+    console.log(`🎉 导入完成! 总计: ${records.length}, 成功: ${importedRecords}, 失败: ${failedRecords}, 耗时: ${duration}ms`);
+
+    // 🔍 导入后验证：确保数据库中的记录数与导入数一致
+    console.log(`🔍 开始导入后验证...`);
+    let validationSuccess = true;
+    const validationErrors: string[] = [];
+    
+    try {
+      // 按salary_month分组验证
+      const monthGroups: Record<string, number> = {};
+      records.forEach(record => {
+        monthGroups[record.salary_month] = (monthGroups[record.salary_month] || 0) + 1;
+      });
+      
+      for (const [salaryMonth, expectedCount] of Object.entries(monthGroups)) {
+        const { count: actualCount, error: countError } = await supabaseAdmin
+          .from('salary_records')
+          .select('*', { count: 'exact', head: true })
+          .eq('salary_month', salaryMonth);
+        
+        if (countError) {
+          validationErrors.push(`验证"${salaryMonth}"时数据库查询失败: ${countError.message}`);
+          validationSuccess = false;
+        } else if (actualCount !== expectedCount) {
+          const discrepancy = expectedCount - (actualCount || 0);
+          validationErrors.push(`"${salaryMonth}"数量不匹配: 预期${expectedCount}, 实际${actualCount}, 差异${discrepancy}`);
+          validationSuccess = false;
+        } else {
+          console.log(`✅ "${salaryMonth}"验证通过: ${actualCount}/${expectedCount} 条记录`);
+        }
+      }
+      
+      if (validationSuccess && failedRecords === 0) {
+        console.log(`✅ 导入验证成功: 所有数据已正确保存到数据库`);
+      } else {
+        console.log(`❌ 导入验证失败: ${validationErrors.length}个问题`);
+      }
+      
+    } catch (validationError: any) {
+      validationErrors.push(`验证过程异常: ${validationError.message}`);
+      validationSuccess = false;
+      console.error(`❌ 验证过程异常:`, validationError);
+    }
+
+    return NextResponse.json({
+      success: failedRecords === 0 && validationSuccess,
+      totalRecords: records.length,
+      importedRecords,
+      failedRecords,
+      errors,
+      duration,
+      validation: {
+        postImportCheck: validationSuccess,
+        validationErrors,
+        consistencyVerified: validationSuccess && failedRecords === 0
+      },
+      batchInfo: {
+        totalBatches,
+        batchSize,
+        processedBatches: totalBatches
+      }
+    });
+
+  } catch (error: any) {
+    console.error('API错误:', error);
+    return NextResponse.json(
+      { error: error.message || '导入过程发生未知错误' },
+      { status: 500 }
+    );
+  }
+}

@@ -16,9 +16,22 @@
       "Bash(node:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(SUPABASE_URL=\"https://abtvvtnzethqnxqjsvyn.supabase.co\" SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFidHZ2dG56ZXRocW54cWpzdnluIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNTQ0NzY2MiwiZXhwIjoyMDUxMDIzNjYyfQ.F7x2n6XYOV7e3n6hm-7i_7HkFfvqvJbY6kWZnZhiZko\" npx supabase db reset --db-url postgresql://postgres:[YOUR-PASSWORD]@db.abtvvtnzethqnxqjsvyn.supabase.co:5432/postgres)",
+      "Bash(SUPABASE_URL=\"https://abtvvtnzethqnxqjsvyn.supabase.co\" SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFidHZ2dG56ZXRocW54cWpzdnluIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNTQ0NzY2MiwiZXhwIjoyMDUxMDIzNjYyfQ.F7x2n6XYOV7e3n6hm-7i_7HkFfvqvJbY6kWZnZhiZko\" node create_import_logs.js)",
+      "Bash(echo $SUPABASE_URL)",
+      "Bash(npx:*)",
+      "Bash(grep:*)",
+      "Bash(echo:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd /c:*)",
+      "Bash(del nul)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "C:\\c\\96AICoding"
+    ]
   }
 }

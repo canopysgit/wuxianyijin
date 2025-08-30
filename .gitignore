@@ -43,3 +43,23 @@ next-env.d.ts
 # IDE
 .vscode/
 .idea/
+
+# Test and debug scripts
+test-*.js
+analyze-*.js
+debug-*.js
+check-*.js
+create_import_logs.js
+manual_*.js
+recreate_*.js
+comprehensive-*.js
+complete-*.js
+final-*.js
+advanced-*.js
+data-loss-*.js
+*.test.js
+
+# Debug images and reports
+debug-*.png
+*-report.md
+FINAL-TEST-REPORT.md

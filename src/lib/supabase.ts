@@ -7,6 +7,7 @@ import type { Database } from './database.types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
@@ -14,12 +15,21 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-// 创建Supabase客户端
+// 创建普通客户端（用于读取操作）
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: false, // 当前版本不需要用户认证
+    persistSession: false,
   },
 })
+
+// 创建管理员客户端（用于写入操作，绕过RLS）
+export const supabaseAdmin = typeof window === 'undefined' && supabaseServiceRoleKey 
+  ? createClient<Database>(supabaseUrl, supabaseServiceRoleKey, {
+      auth: {
+        persistSession: false,
+      },
+    })
+  : supabase
 
 // 导出数据库操作的辅助函数
 export const db = {

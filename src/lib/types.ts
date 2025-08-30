@@ -11,16 +11,16 @@ export interface Employee {
   created_at: Date
 }
 
-// 工资记录类型
+// 工资记录类型 (数据库记录)
 export interface SalaryRecord {
   id: string
   employee_id: string // 工号
   hire_date: Date // 入职日期
-  salary_month: Date // 工资月份
+  salary_month: string // 工资月份 (Sheet名称，如"2022年4月")
   basic_salary: number // 正常工作时间工资 (窄口径基数)
   gross_salary: number // 应发工资合计 (宽口径基数)
   actual_ss_payment?: number // 实际社保缴纳额
-  actual_hf_payment?: number // 实际公积金缴纳额
+  actual_hf_payment?: number // 实际公积金缓纳额
   created_at: Date
 }
 
@@ -92,18 +92,8 @@ export interface ImportLog {
   created_at: Date
 }
 
-// Excel解析相关类型
-export interface ExcelParseResult {
-  fileName: string // 文件名
-  year: number // 年份
-  sheets: SheetData[] // 每个sheet的解析结果
-}
-
-export interface SheetData {
-  sheetName: string // sheet名称
-  salaryMonth: Date // 工资月份 (从sheet名推导)
-  records: SalaryRecord[] // 该月所有员工记录
-}
+// Excel解析相关类型 (主要定义在 excel.ts 中)
+// ExcelParseResult 和 SheetData 接口已移至 src/lib/excel.ts
 
 // 政策规则导入类型
 export interface PolicyRuleImport {
