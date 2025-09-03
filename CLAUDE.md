@@ -114,8 +114,8 @@ git diff
 git log --oneline
 
 # Supabase操作
-export SUPABASE_URL="https://abtvvtnzethqnxqjsvyn.supabase.co"
-export SUPABASE_SERVICE_ROLE_KEY="[key]"
+export SUPABASE_URL="https://your-project-id.supabase.co"
+export SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 
 # Node.js脚本执行
 node scripts/[script-name].js
@@ -152,7 +152,7 @@ node scripts/[script-name].js
 - **数据库**: Supabase (PostgreSQL) + 实时订阅
 - **文件处理**: xlsx库处理Excel解析
 - **状态管理**: React hooks + Zustand (可选)
-- **包管理器**: Bun (推荐) 或 npm
+- **包管理器**: npm (推荐) 或 Bun
 
 ### 项目结构 (新项目)
 
@@ -196,9 +196,9 @@ foshan/                       # 项目根目录
 # 克隆并进入项目目录
 cd foshan
 
-# 安装依赖 (推荐使用Bun)
-bun install
-# 或使用npm: npm install
+# 安装依赖 (推荐使用npm)
+npm install
+# 或使用Bun: bun install
 
 # 复制环境变量模板
 cp .env.example .env.local
@@ -209,18 +209,18 @@ cp .env.example .env.local
 
 ```bash
 # 启动开发服务器
-bun dev
-# 或: npm run dev
+npm run dev
+# 或: bun dev
 
 # 构建生产版本
-bun run build
+npm run build
 
 # 启动生产服务器
-bun start
+npm start
 
 # 代码检查和格式化
-bun run lint
-bun run format
+npm run lint
+npm run format
 ```
 
 ### 3. 数据库配置
@@ -241,14 +241,18 @@ supabase gen types typescript --project-id your-project-id > src/lib/database.ty
 
 ### 核心数据表设计
 
-#### 1. employees (员工主数据表)
+#### 1. 员工数据架构说明
+
+**当前实现**: 无独立employees表，员工信息存储在salary_records表中
+- **员工工号**: salary_records.employee_id
+- **入职日期**: salary_records.hire_date (每条记录保持一致)
+- **员工姓名**: 当前未存储 (脱敏处理)
 
 ```sql
-- id (UUID, 主键)
-- employee_id (TEXT, 唯一) -- 员工工号
-- hire_date (DATE)          -- 入职日期
-- name (TEXT, 可选)         -- 员工姓名 (脱敏)
-- created_at (TIMESTAMPTZ)
+-- 员工信息通过salary_records表的聚合查询获取
+SELECT DISTINCT employee_id, hire_date 
+FROM salary_records 
+GROUP BY employee_id, hire_date
 ```
 
 #### 2. salary_records (工资记录表)
@@ -256,7 +260,7 @@ supabase gen types typescript --project-id your-project-id > src/lib/database.ty
 ```sql
 - id (UUID, 主键)
 - employee_id (TEXT, 外键)
-- salary_month (DATE)                    -- 工资月份
+- salary_month (TEXT)                    -- 工资月份 (中文格式: "2023年1月")
 - gross_salary (DECIMAL)                 -- 应发工资合计
 - basic_salary (DECIMAL)                 -- 正常工作时间工资
 - actual_ss_payment (DECIMAL, 可选)      -- 实际社保缴纳额
@@ -276,9 +280,15 @@ CREATE TABLE policy_rules (
   effective_start DATE NOT NULL,       -- 生效开始日期
   effective_end DATE NOT NULL,         -- 生效结束日期
 
-  -- 社保基数上下限 (养老/工伤/失业/医疗/生育共用)
-  ss_base_floor DECIMAL(10,2) NOT NULL,    -- 社保基数下限
-  ss_base_cap DECIMAL(10,2) NOT NULL,      -- 社保基数上限
+  -- 各险种基数上下限 (分险种独立设置)
+  pension_base_floor DECIMAL(10,2) NOT NULL,      -- 养老保险基数下限
+  pension_base_cap DECIMAL(10,2) NOT NULL,        -- 养老保险基数上限
+  medical_base_floor DECIMAL(10,2) NOT NULL,       -- 医疗保险基数下限
+  medical_base_cap DECIMAL(10,2) NOT NULL,         -- 医疗保险基数上限
+  unemployment_base_floor DECIMAL(10,2) NOT NULL,  -- 失业保险基数下限
+  unemployment_base_cap DECIMAL(10,2) NOT NULL,    -- 失业保险基数上限
+  injury_base_floor DECIMAL(10,2) NOT NULL,        -- 工伤保险基数下限
+  injury_base_cap DECIMAL(10,2) NOT NULL,          -- 工伤保险基数上限
 
   -- 公积金基数上下限
   hf_base_floor DECIMAL(10,2) NOT NULL,    -- 公积金基数下限
@@ -313,89 +323,345 @@ CREATE INDEX idx_policy_rules_year_period ON policy_rules(year, period);
 CREATE INDEX idx_policy_rules_effective_dates ON policy_rules(effective_start, effective_end);
 ```
 
-#### 4. calculation_results (计算结果表)
+#### 4. 8张分表计算结果表架构
+
+**⚠️ 重要变更：已从单一calculation_results表升级为8张分表架构**
+
+##### 8张分表设计原理
+
+为了支持更精细的分险种基数调整和提升查询性能，将计算结果按以下维度分为8张独立表：
+
+**分表维度组合：**
+- **年份维度**: 2023年、2024年 (2个年份)
+- **期间维度**: H1上半年、H2下半年 (2个期间) 
+- **假设维度**: 宽口径(wide)、窄口径(narrow) (2种假设)
+- **总计**: 2 × 2 × 2 = 8张表
+
+**8张表清单：**
+1. `calculate_result_2023_H1_wide` - 2023年上半年宽口径
+2. `calculate_result_2023_H1_narrow` - 2023年上半年窄口径
+3. `calculate_result_2023_H2_wide` - 2023年下半年宽口径
+4. `calculate_result_2023_H2_narrow` - 2023年下半年窄口径
+5. `calculate_result_2024_H1_wide` - 2024年上半年宽口径
+6. `calculate_result_2024_H1_narrow` - 2024年上半年窄口径
+7. `calculate_result_2024_H2_wide` - 2024年下半年宽口径 (仅7-9月)
+8. `calculate_result_2024_H2_narrow` - 2024年下半年窄口径 (仅7-9月)
+
+##### 统一表结构设计 (共25个核心字段)
 
 ```sql
-- id (UUID, 主键)
-- employee_id (TEXT, 外键)
-- calculation_month (DATE)             -- 计算月份
-- employee_category (TEXT)             -- 员工类别 (A/B/C)
-- calculation_assumption (TEXT)        -- 计算假设 (wide/narrow)
-- reference_salary (DECIMAL)           -- 参考工资
-- ss_base (DECIMAL)                   -- 社保基数
-- hf_base (DECIMAL)                   -- 公积金基数
-- theoretical_ss_payment (DECIMAL)     -- 理论社保应缴
-- theoretical_hf_payment (DECIMAL)     -- 理论公积金应缴
-- theoretical_total (DECIMAL)          -- 理论总计
-- actual_total (DECIMAL, 可选)         -- 实际缴纳总计
-- compliance_gap (DECIMAL, 可选)       -- 合规缺口
-- created_at (TIMESTAMPTZ)
-- UNIQUE(employee_id, calculation_month, calculation_assumption)
+CREATE TABLE calculate_result_YYYY_HX_TYPE (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id TEXT NOT NULL,                    -- 员工工号
+  calculation_month DATE NOT NULL,              -- 计算月份
+  employee_category TEXT NOT NULL,              -- 员工类别 (A/B/C)
+  
+  -- 参考工资基础信息 (2个字段)
+  reference_wage_base DECIMAL(10,2) NOT NULL,       -- 参考工资基数(调整前)
+  reference_wage_category TEXT NOT NULL,            -- 参考工资类别("2022年平均工资"等)
+  
+  -- 养老保险调整过程 (3个字段)
+  pension_base_floor DECIMAL(10,2) NOT NULL,        -- 养老保险基数下限
+  pension_base_cap DECIMAL(10,2) NOT NULL,          -- 养老保险基数上限  
+  pension_adjusted_base DECIMAL(10,2) NOT NULL,     -- 养老保险调整后基数
+  
+  -- 医疗保险调整过程 (3个字段)
+  medical_base_floor DECIMAL(10,2) NOT NULL,        -- 医疗保险基数下限
+  medical_base_cap DECIMAL(10,2) NOT NULL,          -- 医疗保险基数上限
+  medical_adjusted_base DECIMAL(10,2) NOT NULL,     -- 医疗保险调整后基数
+  
+  -- 失业保险调整过程 (3个字段)
+  unemployment_base_floor DECIMAL(10,2) NOT NULL,   -- 失业保险基数下限
+  unemployment_base_cap DECIMAL(10,2) NOT NULL,     -- 失业保险基数上限
+  unemployment_adjusted_base DECIMAL(10,2) NOT NULL, -- 失业保险调整后基数
+  
+  -- 工伤保险调整过程 (3个字段)
+  injury_base_floor DECIMAL(10,2) NOT NULL,         -- 工伤保险基数下限
+  injury_base_cap DECIMAL(10,2) NOT NULL,           -- 工伤保险基数上限
+  injury_adjusted_base DECIMAL(10,2) NOT NULL,      -- 工伤保险调整后基数
+  
+  -- 住房公积金调整过程 (3个字段)
+  hf_base_floor DECIMAL(10,2) NOT NULL,             -- 公积金基数下限
+  hf_base_cap DECIMAL(10,2) NOT NULL,               -- 公积金基数上限
+  hf_adjusted_base DECIMAL(10,2) NOT NULL,          -- 公积金调整后基数
+  
+  -- 各险种缴费金额 (6个字段)
+  pension_payment DECIMAL(10,2) NOT NULL,           -- 养老保险应缴
+  medical_payment DECIMAL(10,2) NOT NULL,           -- 医疗保险应缴
+  unemployment_payment DECIMAL(10,2) NOT NULL,      -- 失业保险应缴
+  injury_payment DECIMAL(10,2) NOT NULL,            -- 工伤保险应缴
+  hf_payment DECIMAL(10,2) NOT NULL,                -- 住房公积金应缴
+  theoretical_total DECIMAL(10,2) NOT NULL,         -- 理论总计 (5项之和)
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(employee_id, calculation_month)             -- 员工+月份唯一约束
+);
 ```
 
-### 数据流程
+##### 分险种基数调整核心逻辑
+
+**关键业务变更：每个险种独立进行基数调整**
+
+```typescript
+
+// 新逻辑：分险种独立基数调整
+const pensionAdjusted = Math.min(Math.max(referenceWage, rules.pension_base_floor), rules.pension_base_cap)
+const medicalAdjusted = Math.min(Math.max(referenceWage, rules.medical_base_floor), rules.medical_base_cap)
+const unemploymentAdjusted = Math.min(Math.max(referenceWage, rules.unemployment_base_floor), rules.unemployment_base_cap)
+const injuryAdjusted = Math.min(Math.max(referenceWage, rules.injury_base_floor), rules.injury_base_cap) // 工伤保险按独立上下限调整
+const hfAdjusted = Math.min(Math.max(referenceWage, rules.hf_base_floor), rules.hf_base_cap)
+```
+
+**5个险种的差异化处理：**
+
+1. **养老保险**: 按独立基数上下限调整 (`pension_base_floor`, `pension_base_cap`)
+2. **医疗保险**: 按独立基数上下限调整 (`medical_base_floor`, `medical_base_cap`)
+3. **失业保险**: 按独立基数上下限调整 (`unemployment_base_floor`, `unemployment_base_cap`)
+4. **工伤保险**: 按独立基数上下限调整 (`injury_base_floor`, `injury_base_cap`)
+5. **住房公积金**: 按独立基数上下限调整 (`hf_base_floor`, `hf_base_cap`)
+
+##### 表名动态选择逻辑
+
+```typescript
+// 根据计算参数确定目标表名
+export function getCalculationTableName(
+  year: number,                    // 2023 | 2024
+  period: 'H1' | 'H2',            // 上半年 | 下半年
+  assumption: 'wide' | 'narrow'   // 宽口径 | 窄口径
+): CalculationTable {
+  return `calculate_result_${year}_${period}_${assumption}` as CalculationTable
+}
+
+// 使用示例
+const tableName = getCalculationTableName(2023, 'H1', 'wide')
+// 返回: "calculate_result_2023_H1_wide"
+```
+
+##### 数据分布策略
+
+**时间维度分布：**
+- **2023_H1**: 2023年1月-6月 (6个月)
+- **2023_H2**: 2023年7月-12月 (6个月)  
+- **2024_H1**: 2024年1月-6月 (6个月)
+- **2024_H2**: 2024年7月-9月 (仅3个月，当前数据截止到9月)
+
+**假设维度分布：**
+- **wide口径**: 基于`gross_salary`(应发工资合计)计算的最大风险评估
+- **narrow口径**: 基于`basic_salary`(正常工作时间工资)计算的保守评估
+
+##### 分表架构优势
+
+1. **性能优化**: 数据按时间维度分片，查询效率显著提升
+2. **存储隔离**: 不同假设结果独立存储，避免数据混淆
+3. **并行计算**: 8张表可并行写入，提升批量计算性能
+4. **政策适配**: 每个半年期间对应不同政策规则，表结构天然匹配
+5. **维护便利**: 独立表结构便于单独优化和维护
+6. **扩展性强**: 未来新增年份或期间只需新建对应表
+
+##### TypeScript类型支持
+
+```typescript
+// 8张表的类型联合
+export type CalculationTable = 
+  | 'calculate_result_2023_H1_wide'
+  | 'calculate_result_2023_H1_narrow'
+  | 'calculate_result_2023_H2_wide' 
+  | 'calculate_result_2023_H2_narrow'
+  | 'calculate_result_2024_H1_wide'
+  | 'calculate_result_2024_H1_narrow'
+  | 'calculate_result_2024_H2_wide'
+  | 'calculate_result_2024_H2_narrow'
+
+// 新的详细计算结果接口
+export interface CalculationResultNew {
+  id: string
+  employee_id: string
+  calculation_month: Date
+  employee_category: 'A' | 'B' | 'C'
+  
+  // 25个核心业务字段 (如上表结构所示)
+  reference_wage_base: number
+  reference_wage_category: ReferenceWageCategory
+  
+  pension_base_floor: number
+  pension_base_cap: number  
+  pension_adjusted_base: number
+  // ... 其他险种字段
+  
+  theoretical_total: number
+  created_at: Date
+}
+```
+
+### 8张分表计算流程
 
 ```mermaid
-graph LR
+graph TD
     A[Excel上传] --> B[数据解析验证]
-    B --> C[导入数据库]
-    C --> D[计算引擎]
-    D --> E[双重假设计算]
-    E --> F[结果存储]
-    F --> G[合规分析报告]
+    B --> C[导入salary_records表]
+    C --> D[计算引擎启动]
+    D --> E[确定计算参数: 年份/期间/假设]
+    E --> F[动态选择目标表]
+    F --> G[员工分类算法 A/B/C]
+    G --> H[参考工资选择逻辑]
+    H --> I[分险种基数调整]
+    I --> J[计算各险种缴费]
+    J --> K[写入对应分表]
+    K --> L[8张表并行存储]
+    L --> M[合规分析报告生成]
 ```
+
+## 🚨 数据库操作重要约束
+
+**⚠️ 重要提醒：在我确认之前不要改动Supabase里表的数据，必须提前征得我的同意。**
+
+所有涉及数据库表结构修改、数据删除、数据更新的操作，都必须：
+1. 先提出计划和SQL语句
+2. 等待用户确认
+3. 获得明确同意后才能执行
+
+这包括但不限于：
+- ALTER TABLE 操作
+- DROP COLUMN 操作  
+- DELETE/UPDATE 数据操作
+- INSERT 政策规则数据
+- 任何可能影响现有数据的操作
 
 ## 🔍 核心业务逻辑
 
-### 动态员工分类算法
+### 五险一金计算框架
 
-#### 计算2023年数据时:
+基于Supabase中实际的policy_rules表结构，确定最终计算逻辑：
 
-- **A类 (老员工)**: 2022年1月1日之前入职
-- **B类 (N-1年新员工)**: 2022年度入职
-- **C类 (当年新员工)**: 2023年度入职
+#### 需要计算的项目（5项）：
+1. **养老保险** - 需要基数调整（有上下限）
+2. **失业保险** - 需要基数调整（有上下限）
+3. **医疗保险** - 需要基数调整（有上下限）
+4. **工伤保险** - 不需要基数调整（直接用工资基数）
+5. **住房公积金** - 需要基数调整（有上下限）
 
-#### 计算2024年数据时:
+#### 不再计算的项目：
+- **生育保险** - 已从业务需求中移除
 
-- **A类 (老员工)**: 2023年1月1日之前入职
-- **B类 (N-1年新员工)**: 2023年度入职
-- **C类 (当年新员工)**: 2024年度入职
+#### 基数调整逻辑：
+```typescript
+// 需要基数调整的险种
+function calculateAdjustedBase(referenceWage: number, baseFloor: number, baseCap: number): number {
+  return Math.min(Math.max(referenceWage, baseFloor), baseCap)
+}
 
-### 参考工资选择逻辑
+// 5个险种都需要基数调整：
+// 养老保险基数 = min(max(参考工资, pension_base_floor), pension_base_cap)
+// 医疗保险基数 = min(max(参考工资, medical_base_floor), medical_base_cap)
+// 失业保险基数 = min(max(参考工资, unemployment_base_floor), unemployment_base_cap)  
+// 工伤保险基数 = min(max(参考工资, injury_base_floor), injury_base_cap)
+// 住房公积金基数 = min(max(参考工资, hf_base_floor), hf_base_cap)
+```
 
-#### 2023年计算规则:
+### 参考工资基数选择算法 (基于社保年度)
+
+#### 核心概念：社保年度制
+- **社保年度周期**: 每年7月1日到次年6月30日
+- **选择判断时机**: 基于要计算的月份确定所属社保年度，再判断参考工资类型
+- **政策滞后性**: 新政策数据需要时间积累，存在数据替代机制
+
+#### 简化选择算法:
 
 ```typescript
-// A类员工: 统一使用2022年月均工资 (特殊规则：缺失2021年数据)
-// B类员工: H1用首月工资，H2用2022年月均工资
-// C类员工: 统一使用入职首月工资
-
-if (category === 'A') {
-  referenceWage = average2022Salary
-} else if (category === 'B') {
-  referenceWage = period === 'H1' ? firstMonthSalary : average2022Salary
-} else {
-  // C类
-  referenceWage = firstMonthSalary
+function selectReferenceWageAndCategory(
+  employeeId: string,
+  hireDate: Date,
+  calculationMonth: Date,
+  assumption: 'wide' | 'narrow'
+): Promise<{ wage: number; category: ReferenceWageCategory }> {
+  const hireYear = hireDate.getFullYear()
+  const calculationMonthNum = calculationMonth.getMonth() + 1
+  const calculationYear = calculationMonth.getFullYear()
+  
+  // 确定计算月份所属的社保年度
+  let socialSecurityYear: number
+  if (calculationMonthNum >= 7) {
+    // 7-12月属于当年社保年度
+    socialSecurityYear = calculationYear
+  } else {
+    // 1-6月属于上一年社保年度  
+    socialSecurityYear = calculationYear - 1
+  }
+  
+  // 基于入职年份与社保年度关系选择参考工资
+  if (hireYear < socialSecurityYear) {
+    // 社保年度开始前入职：使用上一年月平均工资
+    const targetYear = socialSecurityYear - 1
+    return {
+      wage: await getEmployeeAverageSalary(employeeId, targetYear, assumption),
+      category: `${targetYear}年平均工资`
+    }
+  } else {
+    // 社保年度内或之后入职：使用入职首月工资
+    return {
+      wage: await getEmployeeFirstMonthSalary(employeeId, assumption),
+      category: '入职首月工资'
+    }
+  }
 }
 ```
 
-#### 2024年计算规则:
+### 社保年度映射表
 
-```typescript
-// A类员工: H1用2022年月均，H2用2023年月均
-// B类员工: H1用首月工资，H2用2023年月均工资
-// C类员工: 统一使用入职首月工资
+#### 4个计算期间的社保年度对应关系:
 
-if (category === 'A') {
-  referenceWage = period === 'H1' ? average2022Salary : average2023Salary
-} else if (category === 'B') {
-  referenceWage = period === 'H1' ? firstMonthSalary : average2023Salary
-} else {
-  // C类
-  referenceWage = firstMonthSalary
-}
-```
+| 计算期间 | 社保年度 | 生效时间 |
+|----------|----------|----------|
+| 2023年1-6月 (H1) | 2022社保年度 | 2022年7月-2023年6月 |
+| 2023年7-12月 (H2) | 2023社保年度 | 2023年7月-2024年6月 |
+| 2024年1-6月 (H1) | 2023社保年度 | 2023年7月-2024年6月 |
+| 2024年7-9月 (H2) | 2024社保年度 | 2024年7月-2025年6月 |
+
+#### 4个计算期间参考工资选择详表 (基于jishu.md):
+
+**2023H1（2023-01~06，社保年度=2022）**
+- 2021-11 入职: 用 2022年均 (特殊替代：原本应用2021年均，但用2022年替代)
+- 2022-01 入职: 用 首月工资
+- 2022-07 入职: 用 首月工资
+- 2023-01 入职: 用 首月工资
+- 2023-07 入职: 本期不存在
+- 2024-01 入职: 本期不存在
+- 2024-07 入职: 本期不存在
+
+**2023H2（2023-07~09，社保年度=2023）**
+- 2021-11 入职: 用 2022年均
+- 2022-01 入职: 用 2022年均
+- 2022-07 入职: 用 2022年均
+- 2023-01 入职: 用 首月工资
+- 2023-07 入职: 用 首月工资
+- 2024-01 入职: 本期不存在
+- 2024-07 入职: 本期不存在
+
+**2024H1（2024-01~06，社保年度=2023）**
+- 2021-11 入职: 用 2022年均
+- 2022-01 入职: 用 2022年均
+- 2022-07 入职: 用 2022年均
+- 2023-01 入职: 用 首月工资
+- 2023-07 入职: 用 首月工资
+- 2024-01 入职: 用 首月工资
+- 2024-07 入职: 本期不存在
+
+**2024H2（2024-07~09，社保年度=2024）**
+- 2021-11 入职: 用 2023年均
+- 2022-01 入职: 用 2023年均
+- 2022-07 入职: 用 2023年均
+- 2023-01 入职: 用 2023年均
+- 2023-07 入职: 用 2023年均
+- 2024-01 入职: 用 首月工资
+- 2024-07 入职: 用 首月工资
+
+#### 关键业务逻辑总结:
+
+1. **社保年度是唯一判断基准**: 入职年份与社保年度的关系决定参考工资类型
+2. **二元选择规则**: 入职年份 < 社保年度 → 使用前一年均工资；入职年份 >= 社保年度 → 使用首月工资
+3. **参考年份动态变化**: 2024H2期间切换到使用2023年均工资
+4. **简化分类逻辑**: 不再使用ABC分类，直接基于入职时间与社保年度关系判断
+5. **2023年H1特殊处理**: 由于缺乏2021年数据，用2022年平均工资替代原本需要的2021年平均工资
 
 ### 双重计算假设机制
 
@@ -469,7 +735,7 @@ CREATE TABLE salary_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id TEXT NOT NULL,            -- 工号
   hire_date DATE NOT NULL,              -- 入厂时间
-  salary_month DATE NOT NULL,           -- 工资月份 (月份第一天)
+  salary_month TEXT NOT NULL,           -- 工资月份 (中文格式: "2023年1月")
   basic_salary DECIMAL(10,2) NOT NULL,  -- 正常工作时间工资
   gross_salary DECIMAL(10,2) NOT NULL,  -- 应发工资合计
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -669,67 +935,95 @@ interface DataImportProps {
 
 ## 🧮 计算引擎架构
 
-### 核心计算函数 (TypeScript实现)
+### 8张分表计算引擎 (TypeScript实现)
 
 ```typescript
-// 主计算入口
-async function calculateSSHF(
+// 新的主计算入口 - 支持8张分表
+async function calculateSSHFDetailed(
   employeeId: string,
   calculationMonth: Date,
   assumption: 'wide' | 'narrow'
-): Promise<CalculationResult>
+): Promise<CalculationResultNew>
 
-// 关键算法函数
+// 核心算法函数
 function determineEmployeeCategory(
   hireDate: Date,
   calculationYear: number
 ): 'A' | 'B' | 'C'
-function selectReferenceWage(
-  employee: Employee,
-  category: string,
-  period: 'H1' | 'H2'
-): number
-function calculateContributionBases(
-  referenceWage: number,
+
+function selectReferenceWageAndCategory(
+  employeeId: string,
+  category: EmployeeCategory,
+  calculationYear: number,
+  period: 'H1' | 'H2',
+  assumption: CalculationAssumption
+): Promise<{ wage: number; category: ReferenceWageCategory }>
+
+// 新增：分险种基数调整函数
+function calculateInsuranceAdjustedBases(
+  referenceWageBase: number,
   rules: PolicyRules
-): [number, number]
-function calculateEnterpriseContributions(
-  ssBases: number,
-  hfBase: number,
-  rules: PolicyRules
-): ContributionBreakdown
+): {
+  pension: InsuranceBaseAdjustment
+  medical: InsuranceBaseAdjustment
+  unemployment: InsuranceBaseAdjustment
+  injury: InsuranceBaseAdjustment
+  hf: InsuranceBaseAdjustment
+}
+
+// 新增：动态表名选择
+function getCalculationTableName(
+  year: number,
+  period: 'H1' | 'H2',
+  assumption: 'wide' | 'narrow'
+): CalculationTable
 ```
 
-### 计算执行流程
+### 8张分表计算执行流程
 
 ```mermaid
 graph TD
     A[输入: 员工ID, 计算月份, 假设类型] --> B[验证员工数据]
     B --> C[确定计算周期 H1/H2]
     C --> D[确定员工类别 A/B/C]
-    D --> E[选择参考工资]
+    D --> E[选择参考工资和类别]
     E --> F[获取政策规则]
-    F --> G[计算缴费基数]
-    G --> H[计算各项缴费]
-    H --> I[汇总结果]
-    I --> J[存储到数据库]
-    J --> K[返回计算结果]
+    F --> G[🔥分险种基数调整]
+    G --> G1[养老保险基数调整]
+    G --> G2[医疗保险基数调整] 
+    G --> G3[失业保险基数调整]
+    G --> G4[工伤保险基数调整]
+    G --> G5[公积金基数调整]
+    G1 --> H[计算各险种缴费]
+    G2 --> H
+    G3 --> H
+    G4 --> H
+    G5 --> H
+    H --> I[汇总理论总计]
+    I --> J[🎯动态选择目标表]
+    J --> K[写入对应分表]
+    K --> L[返回详细计算结果]
 ```
 
-### 批量计算策略
+### 8张分表批量计算策略
 
-- **并发处理**: 使用Web Workers处理大量数据
+- **8表并行计算**: 同时处理8种组合(年份×期间×假设)，显著提升性能
 - **分批执行**: 每批处理100条记录，避免UI阻塞
-- **进度跟踪**: 实时更新处理进度给用户
-- **错误处理**: 单条记录失败不影响整批处理
-- **结果缓存**: 相同条件计算结果缓存复用
+- **智能表路由**: 根据计算月份自动选择正确的目标表
+- **分险种并行**: 5个险种基数调整可并行计算
+- **进度跟踪**: 实时更新8张表的处理进度
+- **错误隔离**: 单张表计算失败不影响其他7张表
+- **结果缓存**: 按表分别缓存，提升查询复用效率
 
-### 计算结果验证
+### 8张分表计算结果验证
 
-- **数据完整性**: 确保所有必要字段都有值
-- **逻辑一致性**: 验证基数计算和缴费计算逻辑
-- **范围检查**: 结果数值在合理范围内
-- **审计追踪**: 记录计算参数和中间结果
+- **表结构一致性**: 确保8张表字段结构完全一致
+- **数据完整性**: 验证所有25个字段都有合理值
+- **分险种逻辑**: 验证每个险种基数调整和缴费计算正确性  
+- **跨表一致性**: 同一员工同月在宽窄口径表中参考工资基数应一致
+- **分险种独立逻辑**: 验证每个险种都按各自的基数上下限独立调整
+- **总计验证**: theoretical_total = 5个险种payment之和
+- **审计追踪**: 完整记录分险种调整过程和中间结果
 
 ## 🚧 开发计划与功能模块
 
@@ -923,7 +1217,7 @@ testContributionBase(3000, rules2023H1) // 测试基数下限提升
 
 - ✅ 基础项目搭建和数据库设计 (已完成三核心表设计和创建)
 - ✅ Excel数据导入功能 (解析引擎、UI组件、数据库导入已完成，包含重复员工记录处理)
-- ⏳ 核心计算引擎实现
+- ✅ 核心计算引擎实现 (8张分表批量计算引擎已完成，包含2023H1特殊逻辑)
 - ⏳ 基础结果展示界面
 - ⏳ 合规分析报告生成
 
@@ -956,7 +1250,7 @@ testContributionBase(3000, rules2023H1) // 测试基数下限提升
 - [✅] 创建Supabase项目并获取凭据
 - [✅] 设计并创建salary_records表结构
 - [✅] 设计并创建policy_rules表结构 (按险种分开基数字段)
-- [✅] 设计并创建calculation_results表结构
+- [✅] 设计并创建8张分表计算结果表结构 (已完成分险种基数调整架构)
 - [⏳] 设计并创建import_logs表结构 (跳过：权限问题)
 - [✅] 创建必要的数据库索引优化查询性能
 - [✅] 插入正确的政策规则数据 (佛山地区2023-2024年4个期间)
@@ -972,7 +1266,7 @@ testContributionBase(3000, rules2023H1) // 测试基数下限提升
 - [✅] 定义Employee相关接口类型
 - [✅] 定义SalaryRecord接口类型
 - [✅] 定义PolicyRules接口类型
-- [✅] 定义CalculationResult接口类型
+- [✅] 定义CalculationResult接口类型 (已升级为CalculationResultNew支持8张分表)
 - [✅] 定义Excel解析相关接口类型
 - [✅] 定义API响应和错误类型
 - [✅] 定义前端组件Props类型
@@ -1034,16 +1328,16 @@ testContributionBase(3000, rules2023H1) // 测试基数下限提升
 
 ### ⚙️ 第三阶段: 计算引擎核心 (Week 5-6)
 
-#### A. 员工分类算法 (Day 18-21) ✅
+#### A. 员工分类算法 (Day 18-21) ✅ (已简化)
 
-- [✅] 实现动态员工分类核心算法
-- [✅] 创建2023年员工分类规则（A/B/C类）
-- [✅] 创建2024年员工分类规则（A/B/C类）
+- [✅] 实现简化员工分类算法 (老员工/新员工二元分类)
+- [跳过] 创建2023年员工分类规则（A/B/C类） (已简化为二元分类)
+- [跳过] 创建2024年员工分类规则（A/B/C类） (已简化为二元分类)
 - [✅] 实现员工分类缓存机制
-- [✅] 添加员工分类算法单元测试
+- [跳过] 添加员工分类算法单元测试 (MVP阶段不需要)
 - [✅] 实现批量员工分类处理
 - [✅] 添加分类结果验证和异常处理
-- [✅] 创建员工分类统计分析功能
+- [跳过] 创建员工分类统计分析功能 (MVP阶段不需要)
 - [✅] 优化分类算法性能
 
 #### B. 参考工资选择逻辑 (Day 20-24) ✅
@@ -1054,7 +1348,7 @@ testContributionBase(3000, rules2023H1) // 测试基数下限提升
 - [✅] 实现月均工资计算功能
 - [✅] 添加入职首月工资获取逻辑
 - [✅] 实现参考工资缓存和复用
-- [✅] 添加参考工资选择单元测试
+- [跳过] 添加参考工资选择单元测试 (MVP阶段不需要)
 - [✅] 创建参考工资异常处理机制
 - [✅] 优化工资数据查询性能
 
@@ -1067,7 +1361,7 @@ testContributionBase(3000, rules2023H1) // 测试基数下限提升
 - [✅] 添加基数计算边界值处理
 - [✅] 创建基数计算结果验证
 - [✅] 实现批量基数计算优化
-- [✅] 添加基数计算单元测试
+- [跳过] 添加基数计算单元测试 (MVP阶段不需要)
 - [✅] 优化基数计算性能
 
 #### D. 企业缴费金额计算 (Day 24-28) ✅
@@ -1076,25 +1370,26 @@ testContributionBase(3000, rules2023H1) // 测试基数下限提升
 - [✅] 实现医疗保险企业缴费计算
 - [✅] 实现失业保险企业缴费计算
 - [✅] 实现工伤保险企业缴费计算
-- [✅] 实现生育保险企业缴费计算
+- [跳过] 实现生育保险企业缴费计算 (已从业务需求中移除)
 - [✅] 实现住房公积金企业缴费计算
 - [✅] 创建缴费金额汇总和统计
 - [✅] 实现缴费计算结果验证
-- [✅] 添加缴费计算单元测试
+- [跳过] 添加缴费计算单元测试 (MVP阶段不需要)
 - [✅] 优化缴费计算性能
 
-#### E. 批量计算引擎 (Day 26-30)
+#### E. 8张分表批量计算引擎 (Day 26-30) ✅
 
-- [ ] 设计批量计算任务队列系统
-- [ ] 实现Web Workers并行计算
-- [ ] 创建计算进度跟踪和状态管理
-- [ ] 实现计算结果批量存储
-- [ ] 添加计算错误处理和重试机制
-- [ ] 创建计算结果缓存策略
-- [ ] 实现增量计算（只计算变更数据）
-- [ ] 优化大批量数据计算性能
-- [ ] 添加计算引擎监控和日志
-- [ ] 创建计算引擎API接口
+- [✅] 设计8张分表架构和字段结构 (已完成分险种基数调整设计)
+- [✅] 实现分险种基数调整核心算法 (支持5个险种独立调整)
+- [✅] 创建动态表名选择逻辑 (根据年份/期间/假设自动路由)
+- [✅] 实现新计算引擎calculateSSHFDetailed函数
+- [✅] 实现2023年H1特殊年份替代逻辑 (用2022年替代2021年)
+- [✅] 完成batch_calculate_2023_h1_all.js批量计算脚本
+- [✅] 实现员工数据验证和错误处理机制
+- [✅] 创建计算结果批量插入操作
+- [✅] 添加计算进度跟踪和状态显示
+- [✅] 实现计算失败容错处理机制
+- [✅] 完成单员工计算验证 (DF-2127案例测试)
 
 ### 📊 第四阶段: 用户界面和交互 (Week 7-8)
 
@@ -1150,20 +1445,20 @@ testContributionBase(3000, rules2023H1) // 测试基数下限提升
 - [ ] 实现合规数据钻取分析
 - [ ] 优化报告生成性能
 
-### 🔧 第五阶段: 系统优化和测试 (Week 9-10)
+### 🔧 第五阶段: 系统优化和测试 (Week 9-10) ⏳ (MVP后期)
 
-#### A. 性能优化 (Day 40-43)
+#### A. 性能优化 (Day 40-43) ⏳
 
 - [ ] 实现React组件懒加载
 - [ ] 优化数据库查询和索引
-- [ ] 添加前端缓存策略（React Query/SWR）
-- [ ] 实现API响应压缩和缓存
+- [跳过] 添加前端缓存策略（React Query/SWR） (MVP阶段不需要)
+- [跳过] 实现API响应压缩和缓存 (MVP阶段不需要)
 - [ ] 优化Excel文件处理内存使用
 - [ ] 添加计算引擎内存管理
-- [ ] 实现静态资源CDN优化
+- [跳过] 实现静态资源CDN优化 (MVP阶段不需要)
 - [ ] 优化首屏加载性能
-- [ ] 添加性能监控和指标
-- [ ] 创建性能基准测试
+- [跳过] 添加性能监控和指标 (MVP阶段不需要)
+- [跳过] 创建性能基准测试 (MVP阶段不需要)
 
 #### B. 错误处理和日志 (Day 42-45)
 

@@ -61,7 +61,54 @@ export interface PolicyRules {
   updated_at: Date
 }
 
-// 计算结果类型
+// 新的8张分表计算结果类型 (统一结构)
+export interface CalculationResultNew {
+  id: string
+  employee_id: string // 员工工号
+  calculation_month: Date // 计算月份
+  employee_category: 'A' | 'B' | 'C' // 员工类别
+  
+  // 参考工资基础信息
+  reference_wage_base: number // 参考工资基数(调整前)
+  reference_wage_category: string // 参考工资类别("2022年平均工资"等)
+  
+  // 养老保险调整过程
+  pension_base_floor: number // 养老保险基数下限
+  pension_base_cap: number // 养老保险基数上限
+  pension_adjusted_base: number // 养老保险调整后基数
+  
+  // 医疗保险调整过程
+  medical_base_floor: number // 医疗保险基数下限
+  medical_base_cap: number // 医疗保险基数上限
+  medical_adjusted_base: number // 医疗保险调整后基数
+  
+  // 失业保险调整过程
+  unemployment_base_floor: number // 失业保险基数下限
+  unemployment_base_cap: number // 失业保险基数上限
+  unemployment_adjusted_base: number // 失业保险调整后基数
+  
+  // 工伤保险调整过程
+  injury_base_floor: number // 工伤保险基数下限
+  injury_base_cap: number // 工伤保险基数上限
+  injury_adjusted_base: number // 工伤保险调整后基数
+  
+  // 住房公积金调整过程
+  hf_base_floor: number // 公积金基数下限
+  hf_base_cap: number // 公积金基数上限
+  hf_adjusted_base: number // 公积金调整后基数
+  
+  // 各险种缴费金额
+  pension_payment: number // 养老保险应缴
+  medical_payment: number // 医疗保险应缴
+  unemployment_payment: number // 失业保险应缴
+  injury_payment: number // 工伤保险应缴
+  hf_payment: number // 住房公积金应缴
+  theoretical_total: number // 理论总计
+  
+  created_at: Date
+}
+
+// 保留原有类型以兼容现有代码
 export interface CalculationResult {
   id: string
   employee_id: string // 员工工号
@@ -172,6 +219,52 @@ export interface ComplianceAnalysis {
   }[]
 }
 
+// 8张表的类型定义
+export type CalculationTable = 
+  | 'calculate_result_2023_H1_wide'
+  | 'calculate_result_2023_H1_narrow'
+  | 'calculate_result_2023_H2_wide' 
+  | 'calculate_result_2023_H2_narrow'
+  | 'calculate_result_2024_H1_wide'
+  | 'calculate_result_2024_H1_narrow'
+  | 'calculate_result_2024_H2_wide'
+  | 'calculate_result_2024_H2_narrow'
+
+// 参考工资类别枚举
+export type ReferenceWageCategory = 
+  | '2022年平均工资'
+  | '2023年平均工资'
+  | '入职首月工资'
+
+// 计算周期类型
+export interface CalculationPeriod {
+  year: number
+  period: 'H1' | 'H2'
+  assumption: 'wide' | 'narrow'
+  tableName: CalculationTable
+}
+
+// 险种基数调整结果
+export interface InsuranceBaseAdjustment {
+  original_base: number // 原始参考工资基数
+  floor: number // 下限
+  cap: number // 上限
+  adjusted_base: number // 调整后基数
+  payment: number // 应缴金额
+}
+
+// 完整的计算调整过程
+export interface CalculationAdjustmentProcess {
+  reference_wage_base: number
+  reference_wage_category: ReferenceWageCategory
+  pension: InsuranceBaseAdjustment
+  medical: InsuranceBaseAdjustment
+  unemployment: InsuranceBaseAdjustment
+  injury: InsuranceBaseAdjustment
+  hf: InsuranceBaseAdjustment
+  theoretical_total: number
+}
+
 // 前端组件Props类型
 export interface DataImportProps {
   importType: 'salary' | 'policy'
@@ -190,4 +283,72 @@ export interface ResultsTableProps {
 
 export interface ComplianceAnalysisProps {
   analysisData: ComplianceAnalysis[]
+}
+
+// 查询系统相关类型
+export interface QueryRequest {
+  employeeId?: string // 员工ID（可选，空则查所有）
+  periods: string[]   // 时间期间多选 ['2023H1', '2024H1', ...]
+}
+
+export interface QueryResponse {
+  wideResults: CalculationResultNew[]
+  narrowResults: CalculationResultNew[]
+  statistics: QueryStatistics
+}
+
+export interface QueryStatistics {
+  totalRecords: number
+  employeeCount: number
+  periodRange: string
+  wideCount: number
+  narrowCount: number
+}
+
+// 配对显示的数据行类型
+export interface PairedCalculationRow {
+  employee_id: string
+  calculation_month: Date
+  monthKey: string // YYYY-MM 格式用于排序
+  wide?: CalculationResultNew // 宽口径数据（可能为空）
+  narrow?: CalculationResultNew // 窄口径数据（可能为空）
+}
+
+// 查询面板组件Props
+export interface QueryPanelProps {
+  onQuery: (request: QueryRequest) => void
+  loading: boolean
+}
+
+// 结果表格组件Props  
+export interface QueryResultsTableProps {
+  pairedRows: PairedCalculationRow[]
+  loading: boolean
+  onExport: () => void
+  onRowExpand: (row: PairedCalculationRow, type: 'wide' | 'narrow') => void
+}
+
+// 统计栏组件Props
+export interface QueryStatisticsBarProps {
+  statistics: QueryStatistics | null
+  loading: boolean
+}
+
+// 详情展开组件Props
+export interface CalculationDetailProps {
+  result: CalculationResultNew
+  type: 'wide' | 'narrow'
+  onClose: () => void
+}
+
+// 排序配置
+export interface SortConfig {
+  field: 'employee_id' | 'calculation_month'
+  direction: 'asc' | 'desc'
+}
+
+// 多字段排序配置
+export interface MultiSortConfig {
+  primary: SortConfig
+  secondary?: SortConfig
 }

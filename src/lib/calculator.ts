@@ -3,6 +3,7 @@
  */
 
 import { db } from './supabase'
+import { parseChineseDate, formatChineseDate } from './utils'
 import type { SalaryRecord, PolicyRules, CalculationResult, CalculationInput } from './types'
 
 /**
@@ -76,10 +77,14 @@ export async function getEmployeeAverageSalary(
     throw new Error(`员工 ${employeeId} 没有工资记录`)
   }
   
-  // 筛选指定年份的记录
+  // 筛选指定年份的记录 (解析中文日期格式)
   const yearRecords = records.filter(record => {
-    const recordYear = new Date(record.salary_month).getFullYear()
-    return recordYear === year
+    const date = parseChineseDate(record.salary_month)
+    if (date) {
+      const recordYear = date.getFullYear()
+      return recordYear === year
+    }
+    return false
   })
   
   if (yearRecords.length === 0) {
@@ -114,10 +119,15 @@ export async function getEmployeeFirstMonthSalary(
     throw new Error(`员工 ${employeeId} 没有工资记录`)
   }
   
-  // 找到最早的工资记录（入职首月）
-  const sortedRecords = records.sort((a, b) => 
-    new Date(a.salary_month).getTime() - new Date(b.salary_month).getTime()
-  )
+  // 找到最早的工资记录（入职首月）- 使用中文日期解析
+  const sortedRecords = records.sort((a, b) => {
+    const dateA = parseChineseDate(a.salary_month)
+    const dateB = parseChineseDate(b.salary_month)
+    if (dateA && dateB) {
+      return dateA.getTime() - dateB.getTime()
+    }
+    return 0
+  })
   
   const firstRecord = sortedRecords[0]
   const salaryField = assumption === 'wide' ? 'gross_salary' : 'basic_salary'
