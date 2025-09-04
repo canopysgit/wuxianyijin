@@ -28,20 +28,21 @@ function getTableNames(periods: string[]): { wide: string[]; narrow: string[] } 
   return { wide, narrow }
 }
 
-async function queryExportData(
+async function queryExportDataCapped(
   tableNames: string[],
+  remaining: number,
   employeeId?: string
 ): Promise<CalculationResultNew[]> {
   const results: CalculationResultNew[] = []
+  if (remaining <= 0) return results
 
-  // Supabase/PostgREST 默认每次请求最多返回 ~1000 行。
-  // 为避免“导出被默默截断”，这里对每张表做服务端分页，直到取完。
-  const pageSize = 10000 // 单次拉取条数，可视内存按需调整
+  const pageSize = 10000
 
   for (const tableName of tableNames) {
+    if (remaining <= 0) break
     try {
       let offset = 0
-      while (true) {
+      while (remaining > 0) {
         let query = supabase
           .from(tableName as any)
           .select('*')
@@ -56,7 +57,7 @@ async function queryExportData(
         const { data, error } = (await query) as any
 
         if (error) {
-          console.error(`查询表 ${tableName} 失败:`, error)
+          console.error(��ѯ��  ʧ��:, error)
           break
         }
 
@@ -71,14 +72,17 @@ async function queryExportData(
           created_at: new Date(record.created_at as unknown as string),
         })) as CalculationResultNew[]
 
-        results.push(...formattedData)
+        const take = Math.min(remaining, formattedData.length)
+        if (take > 0) {
+          results.push(...formattedData.slice(0, take))
+          remaining -= take
+        }
 
-        // 若返回条数小于 pageSize，说明已取完
-        if (batch.length < pageSize) break
+        if (batch.length < pageSize || remaining <= 0) break
         offset += pageSize
       }
     } catch (err) {
-      console.error(`查询表 ${tableName} 异常:`, err)
+      console.error(��ѯ��  �쳣:, err)
       continue
     }
   }
@@ -91,28 +95,28 @@ function formatDataForExcel(results: CalculationResultNew[]): any[] {
     员工工号: result.employee_id,
     计算月份: result.calculation_month.toISOString().substring(0, 7),
     员工类别: result.employee_category,
-    参考工资基数: result.reference_wage_base,
-    参考工资类别: result.reference_wage_category,
-    养老保险基数下限: result.pension_base_floor,
-    养老保险基数上限: result.pension_base_cap,
+    参考工资基�? result.reference_wage_base,
+    参考工资类�? result.reference_wage_category,
+    养老保险基数下�? result.pension_base_floor,
+    养老保险基数上�? result.pension_base_cap,
     养老保险调整后基数: result.pension_adjusted_base,
-    养老保险应缴: result.pension_payment,
+    养老保险应�? result.pension_payment,
     医疗保险基数下限: result.medical_base_floor,
     医疗保险基数上限: result.medical_base_cap,
-    医疗保险调整后基数: result.medical_adjusted_base,
+    医疗保险调整后基�? result.medical_adjusted_base,
     医疗保险应缴: result.medical_payment,
     失业保险基数下限: result.unemployment_base_floor,
     失业保险基数上限: result.unemployment_base_cap,
-    失业保险调整后基数: result.unemployment_adjusted_base,
+    失业保险调整后基�? result.unemployment_adjusted_base,
     失业保险应缴: result.unemployment_payment,
     工伤保险基数下限: result.injury_base_floor,
     工伤保险基数上限: result.injury_base_cap,
-    工伤保险调整后基数: result.injury_adjusted_base,
+    工伤保险调整后基�? result.injury_adjusted_base,
     工伤保险应缴: result.injury_payment,
-    住房公积金基数下限: result.hf_base_floor,
-    住房公积金基数上限: result.hf_base_cap,
+    住房公积金基数下�? result.hf_base_floor,
+    住房公积金基数上�? result.hf_base_cap,
     住房公积金调整后基数: result.hf_adjusted_base,
-    住房公积金应缴: result.hf_payment,
+    住房公积金应�? result.hf_payment,
     理论应缴总计: result.theoretical_total,
     创建时间: result.created_at.toLocaleString('zh-CN'),
   })) as any[];
@@ -122,7 +126,7 @@ function formatDataForExcel(results: CalculationResultNew[]): any[] {
   const totalTheoreticalAmount = results.reduce((sum, r) => sum + r.theoretical_total, 0)
 
   formatted.push({} as any)
-  formatted.push({ 员工工号: '=== 统计汇总 ===' } as any)
+  formatted.push({ 员工工号: '=== 统计汇�?===' } as any)
   formatted.push({ 员工工号: '记录总数', 计算月份: totalRecords } as any)
   formatted.push({ 员工工号: '员工数量', 计算月份: uniqueEmployees, 理论应缴总计: totalTheoreticalAmount } as any)
 
@@ -156,18 +160,18 @@ function createComparisonSheet(
     return {
       员工工号: employeeId,
       计算月份: monthKey,
-      宽口径_养老保险: wide?.pension_payment ?? '无数据',
-      窄口径_养老保险: narrow?.pension_payment ?? '无数据',
-      宽口径_医疗保险: wide?.medical_payment ?? '无数据',
-      窄口径_医疗保险: narrow?.medical_payment ?? '无数据',
-      宽口径_失业保险: wide?.unemployment_payment ?? '无数据',
-      窄口径_失业保险: narrow?.unemployment_payment ?? '无数据',
-      宽口径_工伤保险: wide?.injury_payment ?? '无数据',
-      窄口径_工伤保险: narrow?.injury_payment ?? '无数据',
-      宽口径_住房公积金: wide?.hf_payment ?? '无数据',
-      窄口径_住房公积金: narrow?.hf_payment ?? '无数据',
-      宽口径_理论总计: wide?.theoretical_total ?? '无数据',
-      窄口径_理论总计: narrow?.theoretical_total ?? '无数据',
+      宽口径_养老保�? wide?.pension_payment ?? '无数�?,
+      窄口径_养老保�? narrow?.pension_payment ?? '无数�?,
+      宽口径_医疗保险: wide?.medical_payment ?? '无数�?,
+      窄口径_医疗保险: narrow?.medical_payment ?? '无数�?,
+      宽口径_失业保险: wide?.unemployment_payment ?? '无数�?,
+      窄口径_失业保险: narrow?.unemployment_payment ?? '无数�?,
+      宽口径_工伤保险: wide?.injury_payment ?? '无数�?,
+      窄口径_工伤保险: narrow?.injury_payment ?? '无数�?,
+      宽口径_住房公积�? wide?.hf_payment ?? '无数�?,
+      窄口径_住房公积�? narrow?.hf_payment ?? '无数�?,
+      宽口径_理论总计: wide?.theoretical_total ?? '无数�?,
+      窄口径_理论总计: narrow?.theoretical_total ?? '无数�?,
       差额_理论总计:
         wide && narrow ? wide.theoretical_total - narrow.theoretical_total : '无法计算',
     }
@@ -193,7 +197,7 @@ export async function POST(request: NextRequest) {
       body = JSON.parse(raw)
     } catch (e: any) {
       console.error('导出API JSON解析失败, 原始内容:', raw)
-      const snippet = raw.length > 200 ? raw.slice(0, 200) + '…' : raw
+      const snippet = raw.length > 200 ? raw.slice(0, 200) + '�? : raw
       return NextResponse.json(
         {
           error: '请求体不是有效的JSON',
@@ -206,16 +210,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (!body.periods || !Array.isArray(body.periods) || body.periods.length === 0) {
-      return NextResponse.json({ error: '请选择至少一个时间期间' }, { status: 400 })
+      return NextResponse.json({ error: '请选择至少一个时间期�? }, { status: 400 })
     }
 
     const { wide: wideTables, narrow: narrowTables } = getTableNames(body.periods)
 
-    const [wideResults, narrowResults] = await Promise.all([
-      queryExportData(wideTables, body.employeeId),
-      queryExportData(narrowTables, body.employeeId),
-    ])
-
+    // ������ 4000����+խ�ϼƣ���ȷ�������ȶ�
+    const CAP_TOTAL = 4000
+    const wideResults = await queryExportDataCapped(wideTables, CAP_TOTAL, body.employeeId)
+    const remaining = Math.max(0, CAP_TOTAL - wideResults.length)
+    const narrowResults = await queryExportDataCapped(narrowTables, remaining, body.employeeId)
     const wideData = formatDataForExcel(wideResults)
     const narrowData = formatDataForExcel(narrowResults)
     const comparisonData = createComparisonSheet(wideResults, narrowResults)
@@ -224,9 +228,9 @@ export async function POST(request: NextRequest) {
     const wideSheet = XLSX.utils.json_to_sheet(wideData)
     const narrowSheet = XLSX.utils.json_to_sheet(narrowData)
     const comparisonSheet = XLSX.utils.json_to_sheet(comparisonData)
-    XLSX.utils.book_append_sheet(workbook, wideSheet, '宽口径明细')
-    XLSX.utils.book_append_sheet(workbook, narrowSheet, '窄口径明细')
-    XLSX.utils.book_append_sheet(workbook, comparisonSheet, '汇总对比')
+    XLSX.utils.book_append_sheet(workbook, wideSheet, '宽口径明�?)
+    XLSX.utils.book_append_sheet(workbook, narrowSheet, '窄口径明�?)
+    XLSX.utils.book_append_sheet(workbook, comparisonSheet, '汇总对�?)
 
     const excelBuffer = XLSX.write(workbook, {
       type: 'buffer',
