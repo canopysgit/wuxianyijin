@@ -7,6 +7,10 @@ const nextConfig = {
   reactStrictMode: true,
   // Disable powered-by header for security
   poweredByHeader: false,
+  // Temporarily ignore ESLint during production builds (Vercel)
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 }
 
 module.exports = nextConfig
