@@ -1,25 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { issueToken, buildSessionCookie } from '@/lib/auth/session'
+import { supabaseAdmin } from '@/lib/supabase'
 import bcrypt from 'bcryptjs'
 
-type UserRecord = { username: string; passwordHash: string; isActive?: boolean }
+type UserRecord = {
+  id: string
+  username: string
+  password_hash: string
+  is_active: boolean
+  created_at: string
+}
 
-function parseUsers(): UserRecord[] {
-  const raw = process.env.AUTH_USERS || ''
-  if (!raw) {
-    throw new Error('未配置 AUTH_USERS 环境变量（JSON 数组或 csv 样式）')
-  }
+async function getUserFromDatabase(username: string): Promise<UserRecord | null> {
   try {
-    // 优先尝试 JSON 数组：[{"username":"u","passwordHash":"..."}]
-    const list = JSON.parse(raw)
-    if (Array.isArray(list)) return list
-  } catch {}
-  // 回退：csv 风格 u1:hash1,u2:hash2
-  const list: UserRecord[] = raw.split(',').map((pair) => {
-    const [u, h] = pair.split(':')
-    return { username: u?.trim() || '', passwordHash: h?.trim() || '' }
-  })
-  return list.filter((x) => x.username && x.passwordHash)
+    const { data, error } = await supabaseAdmin
+      .from('app_users')
+      .select('*')
+      .eq('username', username)
+      .eq('is_active', true)
+      .single()
+
+    if (error) {
+      console.error('查询用户失败:', error)
+      return null
+    }
+
+    return data as UserRecord
+  } catch (error) {
+    console.error('数据库查询异常:', error)
+    return null
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -30,29 +40,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '缺少用户名或密码' }, { status: 400 })
     }
 
-    const users = parseUsers()
-    // 调试：输出用户数量（不输出敏感信息）
-    console.log('[auth] users loaded:', users.length)
-    const user = users.find((u) => u.username === username)
-    if (!user || user.isActive === false) {
+    // 从数据库查询用户
+    const user = await getUserFromDatabase(username)
+    if (!user) {
       return NextResponse.json({ error: '用户名或密码错误' }, { status: 401 })
     }
 
-    let ok = false
-    if (user.passwordHash.startsWith('$2a$') || user.passwordHash.startsWith('$2b$')) {
-      ok = await bcrypt.compare(password, user.passwordHash)
-    } else {
-      ok = password === user.passwordHash
-    }
-    if (!ok) {
+    // 验证密码
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash)
+    if (!isPasswordValid) {
       return NextResponse.json({ error: '用户名或密码错误' }, { status: 401 })
     }
 
-    const token = await issueToken({ username })
-    const res = NextResponse.json({ success: true })
+    // 生成JWT令牌
+    const token = await issueToken({ username: user.username })
+    const res = NextResponse.json({
+      success: true,
+      user: {
+        username: user.username,
+        id: user.id
+      }
+    })
     res.headers.set('Set-Cookie', buildSessionCookie(token))
     return res
   } catch (e: any) {
+    console.error('登录失败:', e)
     return NextResponse.json({ error: '登录失败', details: e?.message || String(e) }, { status: 500 })
   }
 }
