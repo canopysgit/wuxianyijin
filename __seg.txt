@@ -1,0 +1,72 @@
+// 执行跨表联合查询
+async function queryCalculationResults(
+  tableNames: string[],
+  employeeId?: string
+): Promise<CalculationResultNew[]> {
+  const results: CalculationResultNew[] = []
+
+  // 遍历每张表进行查�?  for (const tableName of tableNames) {
+    try {
+      let query = supabase
+        .from(tableName as any)
+        .select(`
+          id,
+          employee_id,
+          calculation_month,
+          employee_category,
+          reference_wage_base,
+          reference_wage_category,
+          pension_base_floor,
+          pension_base_cap,
+          pension_adjusted_base,
+          medical_base_floor,
+          medical_base_cap,
+          medical_adjusted_base,
+          unemployment_base_floor,
+          unemployment_base_cap,
+          unemployment_adjusted_base,
+          injury_base_floor,
+          injury_base_cap,
+          injury_adjusted_base,
+          hf_base_floor,
+          hf_base_cap,
+          hf_adjusted_base,
+          pension_payment,
+          medical_payment,
+          unemployment_payment,
+          injury_payment,
+          hf_payment,
+          theoretical_total,
+          created_at
+        `)
+        .order('calculation_month', { ascending: true })
+        .order('employee_id', { ascending: true }) as any
+
+      // 如果指定了员工ID，添加过滤条�?      if (employeeId && employeeId.trim()) {
+        query = query.eq('employee_id', employeeId.trim())
+      }
+
+      const { data, error } = (await query) as any
+
+      if (error) {
+        console.error(`查询�?${tableName} 失败:`, error)
+        continue // 继续查询其他�?      }
+
+      if (data && data.length > 0) {
+        // 转换数据格式：calculation_month �?YYYYMM 文本，解析为月初日期
+        const formattedData = (data as any[]).map(record => ({
+          ...record,
+          calculation_month: parseYYYYMM(record.calculation_month as unknown as string),
+          created_at: new Date(record.created_at as unknown as string)
+        })) as CalculationResultNew[]
+
+        results.push(...formattedData)
+      }
+    } catch (err) {
+      console.error(`查询�?${tableName} 异常:`, err)
+      continue
+    }
+  }
+
+  return results
+}

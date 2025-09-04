@@ -36,7 +36,7 @@ async function queryExportDataCapped(
   const results: CalculationResultNew[] = []
   if (remaining <= 0) return results
 
-  const pageSize = 10000
+  const pageSize = 1000 // 使用与查询API相同的分页大小
 
   for (const tableName of tableNames) {
     if (remaining <= 0) break
@@ -48,214 +48,40 @@ async function queryExportDataCapped(
           .select('*')
           .order('calculation_month', { ascending: true })
           .order('employee_id', { ascending: true })
-          .range(offset, offset + pageSize - 1) as any
+          .range(offset, offset + Math.min(pageSize, remaining) - 1) as any
 
         if (employeeId && employeeId.trim()) {
           query = query.eq('employee_id', employeeId.trim())
         }
 
         const { data, error } = (await query) as any
-
         if (error) {
-          console.error(��ѯ��  ʧ��:, error)
+          console.error(`导出查询表 ${tableName} 失败:`, error)
           break
         }
 
         const batch = (data || []) as any[]
-        if (batch.length === 0) {
-          break
-        }
+        if (batch.length === 0) break
 
-        const formattedData = batch.map((record) => ({
-          ...record,
+        const formattedData = batch.map((record: any) => ({
+          ...(record as Record<string, any>),
           calculation_month: parseYYYYMM(record.calculation_month as unknown as string),
           created_at: new Date(record.created_at as unknown as string),
         })) as CalculationResultNew[]
 
-        const take = Math.min(remaining, formattedData.length)
-        if (take > 0) {
-          results.push(...formattedData.slice(0, take))
-          remaining -= take
-        }
+        results.push(...formattedData)
+        remaining -= batch.length
 
-        if (batch.length < pageSize || remaining <= 0) break
+        if (batch.length < pageSize) break
         offset += pageSize
       }
     } catch (err) {
-      console.error(��ѯ��  �쳣:, err)
+      console.error(`导出查询表 ${tableName} 异常:`, err)
       continue
     }
   }
 
   return results
-}
-
-function formatDataForExcel(results: CalculationResultNew[]): any[] {
-  const formatted: any[] = results.map((result) => ({
-    员工工号: result.employee_id,
-    计算月份: result.calculation_month.toISOString().substring(0, 7),
-    员工类别: result.employee_category,
-    参考工资基�? result.reference_wage_base,
-    参考工资类�? result.reference_wage_category,
-    养老保险基数下�? result.pension_base_floor,
-    养老保险基数上�? result.pension_base_cap,
-    养老保险调整后基数: result.pension_adjusted_base,
-    养老保险应�? result.pension_payment,
-    医疗保险基数下限: result.medical_base_floor,
-    医疗保险基数上限: result.medical_base_cap,
-    医疗保险调整后基�? result.medical_adjusted_base,
-    医疗保险应缴: result.medical_payment,
-    失业保险基数下限: result.unemployment_base_floor,
-    失业保险基数上限: result.unemployment_base_cap,
-    失业保险调整后基�? result.unemployment_adjusted_base,
-    失业保险应缴: result.unemployment_payment,
-    工伤保险基数下限: result.injury_base_floor,
-    工伤保险基数上限: result.injury_base_cap,
-    工伤保险调整后基�? result.injury_adjusted_base,
-    工伤保险应缴: result.injury_payment,
-    住房公积金基数下�? result.hf_base_floor,
-    住房公积金基数上�? result.hf_base_cap,
-    住房公积金调整后基数: result.hf_adjusted_base,
-    住房公积金应�? result.hf_payment,
-    理论应缴总计: result.theoretical_total,
-    创建时间: result.created_at.toLocaleString('zh-CN'),
-  })) as any[];
-
-  const totalRecords = formatted.length
-  const uniqueEmployees = new Set(results.map((r) => r.employee_id)).size
-  const totalTheoreticalAmount = results.reduce((sum, r) => sum + r.theoretical_total, 0)
-
-  formatted.push({} as any)
-  formatted.push({ 员工工号: '=== 统计汇�?===' } as any)
-  formatted.push({ 员工工号: '记录总数', 计算月份: totalRecords } as any)
-  formatted.push({ 员工工号: '员工数量', 计算月份: uniqueEmployees, 理论应缴总计: totalTheoreticalAmount } as any)
-
-  return formatted
-}
-
-function createComparisonSheet(
-  wideResults: CalculationResultNew[],
-  narrowResults: CalculationResultNew[]
-): any[] {
-  const wideMap = new Map<string, CalculationResultNew>()
-  const narrowMap = new Map<string, CalculationResultNew>()
-
-  wideResults.forEach((r) => {
-    const key = `${r.employee_id}|${r.calculation_month.toISOString().substring(0, 7)}`
-    wideMap.set(key, r)
-  })
-
-  narrowResults.forEach((r) => {
-    const key = `${r.employee_id}|${r.calculation_month.toISOString().substring(0, 7)}`
-    narrowMap.set(key, r)
-  })
-
-  const allKeys = new Set([...wideMap.keys(), ...narrowMap.keys()])
-
-  const comparison = Array.from(allKeys).map((key) => {
-    const [employeeId, monthKey] = key.split('|')
-    const wide = wideMap.get(key)
-    const narrow = narrowMap.get(key)
-
-    return {
-      员工工号: employeeId,
-      计算月份: monthKey,
-      宽口径_养老保�? wide?.pension_payment ?? '无数�?,
-      窄口径_养老保�? narrow?.pension_payment ?? '无数�?,
-      宽口径_医疗保险: wide?.medical_payment ?? '无数�?,
-      窄口径_医疗保险: narrow?.medical_payment ?? '无数�?,
-      宽口径_失业保险: wide?.unemployment_payment ?? '无数�?,
-      窄口径_失业保险: narrow?.unemployment_payment ?? '无数�?,
-      宽口径_工伤保险: wide?.injury_payment ?? '无数�?,
-      窄口径_工伤保险: narrow?.injury_payment ?? '无数�?,
-      宽口径_住房公积�? wide?.hf_payment ?? '无数�?,
-      窄口径_住房公积�? narrow?.hf_payment ?? '无数�?,
-      宽口径_理论总计: wide?.theoretical_total ?? '无数�?,
-      窄口径_理论总计: narrow?.theoretical_total ?? '无数�?,
-      差额_理论总计:
-        wide && narrow ? wide.theoretical_total - narrow.theoretical_total : '无法计算',
-    }
-  })
-
-  comparison.sort((a: any, b: any) => {
-    const monthCompare = String(a['计算月份']).localeCompare(String(b['计算月份']))
-    if (monthCompare !== 0) return monthCompare
-    return String(a['员工工号']).localeCompare(String(b['员工工号']))
-  })
-
-  return comparison
-}
-
-export async function POST(request: NextRequest) {
-  const unauthorized = await requireSessionOr401(request as any)
-  if (unauthorized) return unauthorized
-  try {
-    // Robust JSON parsing with logging to diagnose client payload issues
-    const raw = await request.text()
-    let body: ExportRequest
-    try {
-      body = JSON.parse(raw)
-    } catch (e: any) {
-      console.error('导出API JSON解析失败, 原始内容:', raw)
-      const snippet = raw.length > 200 ? raw.slice(0, 200) + '�? : raw
-      return NextResponse.json(
-        {
-          error: '请求体不是有效的JSON',
-          details: e?.message || String(e),
-          contentType: request.headers.get('content-type') || '',
-          rawSnippet: snippet,
-        },
-        { status: 400 }
-      )
-    }
-
-    if (!body.periods || !Array.isArray(body.periods) || body.periods.length === 0) {
-      return NextResponse.json({ error: '请选择至少一个时间期�? }, { status: 400 })
-    }
-
-    const { wide: wideTables, narrow: narrowTables } = getTableNames(body.periods)
-
-    // ������ 4000����+խ�ϼƣ���ȷ�������ȶ�
-    const CAP_TOTAL = 4000
-    const wideResults = await queryExportDataCapped(wideTables, CAP_TOTAL, body.employeeId)
-    const remaining = Math.max(0, CAP_TOTAL - wideResults.length)
-    const narrowResults = await queryExportDataCapped(narrowTables, remaining, body.employeeId)
-    const wideData = formatDataForExcel(wideResults)
-    const narrowData = formatDataForExcel(narrowResults)
-    const comparisonData = createComparisonSheet(wideResults, narrowResults)
-
-    const workbook = XLSX.utils.book_new()
-    const wideSheet = XLSX.utils.json_to_sheet(wideData)
-    const narrowSheet = XLSX.utils.json_to_sheet(narrowData)
-    const comparisonSheet = XLSX.utils.json_to_sheet(comparisonData)
-    XLSX.utils.book_append_sheet(workbook, wideSheet, '宽口径明�?)
-    XLSX.utils.book_append_sheet(workbook, narrowSheet, '窄口径明�?)
-    XLSX.utils.book_append_sheet(workbook, comparisonSheet, '汇总对�?)
-
-    const excelBuffer = XLSX.write(workbook, {
-      type: 'buffer',
-      bookType: 'xlsx',
-    })
-
-    const timestamp = new Date().toISOString().substring(0, 19).replace(/[:-]/g, '')
-    const fileName = `五险一金查询结果_${body.periods.join('-')}_${timestamp}.xlsx`
-    const asciiFallback = `result_${timestamp}.xlsx`
-
-    return new NextResponse(excelBuffer as any, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        // Use RFC 5987 encoding to support non-ASCII filenames in headers
-        'Content-Disposition': `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-      },
-    })
-  } catch (error) {
-    console.error('导出API错误:', error)
-    return NextResponse.json(
-      { error: '导出失败', details: error instanceof Error ? error.message : '未知错误' },
-      { status: 500 }
-    )
-  }
 }
 
 function parseYYYYMM(input: string): Date {
@@ -274,4 +100,198 @@ function parseYYYYMM(input: string): Date {
     return new Date(Date.UTC(y, Math.max(0, Math.min(11, m - 1)), 1))
   }
   return new Date(s)
+}
+
+function formatCurrency(amount: number): string {
+  return amount.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+}
+
+function formatDate(date: Date): string {
+  return date.toISOString().substring(0, 7)
+}
+
+function createWorkbook(
+  wideResults: CalculationResultNew[],
+  narrowResults: CalculationResultNew[],
+  periods: string[]
+): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new()
+
+  // 创建汇总表
+  const summaryData = [
+    ['五险一金查询结果汇总'],
+    [''],
+    ['查询期间', periods.join(', ')],
+    ['宽口径记录数', wideResults.length],
+    ['窄口径记录数', narrowResults.length],
+    ['总记录数', wideResults.length + narrowResults.length],
+    ['导出时间', new Date().toLocaleString('zh-CN')],
+    [''],
+    ['说明：'],
+    ['- 宽口径：按实际工资计算五险一金'],
+    ['- 窄口径：按政策规定的基数上下限计算五险一金'],
+    ['- 金额单位：元（保留2位小数）']
+  ]
+
+  const summaryWs = XLSX.utils.aoa_to_sheet(summaryData)
+  XLSX.utils.book_append_sheet(wb, summaryWs, '汇总')
+
+  // 创建宽口径明细表
+  if (wideResults.length > 0) {
+    const wideHeaders = [
+      '员工ID', '计算月份', '员工类别', '参考工资基数', '参考工资类别',
+      '养老基数下限', '养老基数上限', '养老调整基数',
+      '医疗基数下限', '医疗基数上限', '医疗调整基数',
+      '失业基数下限', '失业基数上限', '失业调整基数',
+      '工伤基数下限', '工伤基数上限', '工伤调整基数',
+      '公积金基数下限', '公积金基数上限', '公积金调整基数',
+      '养老保险缴费', '医疗保险缴费', '失业保险缴费', '工伤保险缴费', '住房公积金缴费',
+      '理论总计'
+    ]
+
+    const wideRows = wideResults.map(r => [
+      r.employee_id,
+      formatDate(r.calculation_month),
+      r.employee_category,
+      formatCurrency(r.reference_wage_base),
+      r.reference_wage_category,
+      formatCurrency(r.pension_base_floor),
+      formatCurrency(r.pension_base_cap),
+      formatCurrency(r.pension_adjusted_base),
+      formatCurrency(r.medical_base_floor),
+      formatCurrency(r.medical_base_cap),
+      formatCurrency(r.medical_adjusted_base),
+      formatCurrency(r.unemployment_base_floor),
+      formatCurrency(r.unemployment_base_cap),
+      formatCurrency(r.unemployment_adjusted_base),
+      formatCurrency(r.injury_base_floor),
+      formatCurrency(r.injury_base_cap),
+      formatCurrency(r.injury_adjusted_base),
+      formatCurrency(r.hf_base_floor),
+      formatCurrency(r.hf_base_cap),
+      formatCurrency(r.hf_adjusted_base),
+      formatCurrency(r.pension_payment),
+      formatCurrency(r.medical_payment),
+      formatCurrency(r.unemployment_payment),
+      formatCurrency(r.injury_payment),
+      formatCurrency(r.hf_payment),
+      formatCurrency(r.theoretical_total)
+    ])
+
+    const wideWs = XLSX.utils.aoa_to_sheet([wideHeaders, ...wideRows])
+    XLSX.utils.book_append_sheet(wb, wideWs, '宽口径明细')
+  }
+
+  // 创建窄口径明细表
+  if (narrowResults.length > 0) {
+    const narrowHeaders = [
+      '员工ID', '计算月份', '员工类别', '参考工资基数', '参考工资类别',
+      '养老基数下限', '养老基数上限', '养老调整基数',
+      '医疗基数下限', '医疗基数上限', '医疗调整基数',
+      '失业基数下限', '失业基数上限', '失业调整基数',
+      '工伤基数下限', '工伤基数上限', '工伤调整基数',
+      '公积金基数下限', '公积金基数上限', '公积金调整基数',
+      '养老保险缴费', '医疗保险缴费', '失业保险缴费', '工伤保险缴费', '住房公积金缴费',
+      '理论总计'
+    ]
+
+    const narrowRows = narrowResults.map(r => [
+      r.employee_id,
+      formatDate(r.calculation_month),
+      r.employee_category,
+      formatCurrency(r.reference_wage_base),
+      r.reference_wage_category,
+      formatCurrency(r.pension_base_floor),
+      formatCurrency(r.pension_base_cap),
+      formatCurrency(r.pension_adjusted_base),
+      formatCurrency(r.medical_base_floor),
+      formatCurrency(r.medical_base_cap),
+      formatCurrency(r.medical_adjusted_base),
+      formatCurrency(r.unemployment_base_floor),
+      formatCurrency(r.unemployment_base_cap),
+      formatCurrency(r.unemployment_adjusted_base),
+      formatCurrency(r.injury_base_floor),
+      formatCurrency(r.injury_base_cap),
+      formatCurrency(r.injury_adjusted_base),
+      formatCurrency(r.hf_base_floor),
+      formatCurrency(r.hf_base_cap),
+      formatCurrency(r.hf_adjusted_base),
+      formatCurrency(r.pension_payment),
+      formatCurrency(r.medical_payment),
+      formatCurrency(r.unemployment_payment),
+      formatCurrency(r.injury_payment),
+      formatCurrency(r.hf_payment),
+      formatCurrency(r.theoretical_total)
+    ])
+
+    const narrowWs = XLSX.utils.aoa_to_sheet([narrowHeaders, ...narrowRows])
+    XLSX.utils.book_append_sheet(wb, narrowWs, '窄口径明细')
+  }
+
+  return wb
+}
+
+export async function POST(request: NextRequest) {
+  const unauthorized = await requireSessionOr401(request as any)
+  if (unauthorized) return unauthorized
+
+  try {
+    const body: ExportRequest = await request.json()
+
+    if (!body.periods || !Array.isArray(body.periods) || body.periods.length === 0) {
+      return NextResponse.json({ error: '请选择至少一个时间期间' }, { status: 400 })
+    }
+
+    console.log('导出参数:', {
+      employeeId: body.employeeId || '(所有员工)',
+      periods: body.periods,
+    })
+
+    const { wide: wideTables, narrow: narrowTables } = getTableNames(body.periods)
+    const maxRecords = 8000 // 增加导出限制到8000条
+
+    // 并行查询宽口径和窄口径数据
+    const [wideResults, narrowResults] = await Promise.all([
+      queryExportDataCapped(wideTables, maxRecords / 2, body.employeeId),
+      queryExportDataCapped(narrowTables, maxRecords / 2, body.employeeId),
+    ])
+
+    console.log('导出数据统计:', {
+      wideCount: wideResults.length,
+      narrowCount: narrowResults.length,
+      totalCount: wideResults.length + narrowResults.length
+    })
+
+    // 创建Excel工作簿
+    const workbook = createWorkbook(wideResults, narrowResults, body.periods)
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+
+    // 生成文件名
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19)
+    const chineseFilename = `五险一金查询结果_${body.periods.join('_')}_${timestamp}.xlsx`
+    const asciiFilename = `result_${timestamp}.xlsx`
+
+    // 使用RFC5987格式设置文件名
+    const encodedChineseFilename = encodeURIComponent(chineseFilename)
+
+    const response = new NextResponse(buffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedChineseFilename}`,
+        'Content-Length': buffer.length.toString(),
+      },
+    })
+
+    return response
+  } catch (error) {
+    console.error('导出API错误:', error)
+    return NextResponse.json(
+      { error: '导出失败', details: error instanceof Error ? error.message : '未知错误' },
+      { status: 500 }
+    )
+  }
 }

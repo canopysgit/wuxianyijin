@@ -168,7 +168,7 @@ export function QueryPanel({ onQuery, loading }: QueryPanelProps) {
           <p className="text-sm text-blue-700">
             <strong>查询说明：</strong>
             系统会同时查询宽口径和窄口径数据，并按员工ID+月份配对显示。
-            单次查询最多返回6000条记录，建议按需选择时间期间。
+            单次查询最多返回8000条记录，建议按需选择时间期间。
           </p>
         </div>
       </CardContent>
