@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSessionOr401 } from '@/lib/auth/session'
 import { supabase } from '@/lib/supabase'
-import { CalculationResultNew, CalculationTable } from '@/lib/types'
+import { CalculationResultNew } from '@/lib/types'
 
 // 查询请求类型
 interface QueryRequest {
@@ -224,3 +224,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+
