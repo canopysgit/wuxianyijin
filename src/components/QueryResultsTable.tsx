@@ -2,12 +2,11 @@
 
 import { useState, useMemo } from 'react'
 import { QueryResultsTableProps, PairedCalculationRow, MultiSortConfig } from '@/lib/types'
-import { 
-  sortPairedRows, 
-  formatCurrency, 
-  formatMonth, 
-  hasDataType, 
-  getDataByType,
+import {
+  sortPairedRows,
+  formatCurrency,
+  formatMonth,
+  hasDataType,
   paginatePairedRows
 } from '@/lib/queryUtils'
 import { Button } from '@/components/ui/button'

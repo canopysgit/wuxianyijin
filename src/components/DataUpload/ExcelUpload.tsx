@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Upload, FileText, AlertCircle, CheckCircle, X, Eye } from 'lucide-react';
 import { parseExcelFile, validateExcelFile, ExcelParseResult } from '../../lib/excel';
-import { importExcelData, importSalaryRecords, ImportResult } from '../../lib/database';
+import { importSalaryRecords, ImportResult } from '../../lib/database';
 
 interface UploadFile {
   file: File;
@@ -109,7 +109,7 @@ export default function ExcelUpload({ onImportComplete }: ExcelUploadProps) {
         importProgress: {
           totalRecords,
           processedRecords: 0,
-          currentSheet: uploadFile.parseResult.sheets[0]?.sheetName || '',
+          currentSheet: uploadFile.parseResult?.sheets[0]?.sheetName || '',
           percentage: 0
         }
       } : f
@@ -156,24 +156,27 @@ export default function ExcelUpload({ onImportComplete }: ExcelUploadProps) {
         }
       }
       
-      setUploadFiles(prev => prev.map(f => 
-        f.id === fileId 
-          ? { ...f, status: 'imported' as const, importResults, importProgress: undefined }
-          : f
-      ));
+      setUploadFiles(prev => prev.map(f => {
+        if (f.id === fileId) {
+          const { importProgress, ...rest } = f;
+          return { ...rest, status: 'imported' as const, importResults };
+        }
+        return f;
+      }));
 
       onImportComplete?.(importResults);
     } catch (error) {
-      setUploadFiles(prev => prev.map(f => 
-        f.id === fileId 
-          ? { 
-              ...f, 
-              status: 'error' as const, 
-              error: error instanceof Error ? error.message : '导入失败',
-              importProgress: undefined
-            }
-          : f
-      ));
+      setUploadFiles(prev => prev.map(f => {
+        if (f.id === fileId) {
+          const { importProgress, ...rest } = f;
+          return {
+            ...rest,
+            status: 'error' as const,
+            error: error instanceof Error ? error.message : '导入失败'
+          };
+        }
+        return f;
+      }));
     }
   };
 

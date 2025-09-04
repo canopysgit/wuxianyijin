@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { jwtVerify } from 'jose'
 
 export default async function QueryLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const token = cookieStore.get('session')?.value
   const secret = process.env.AUTH_SECRET
   if (!token || !secret) {

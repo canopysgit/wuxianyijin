@@ -56,13 +56,16 @@ export function pairCalculationResults(
     const baseResult = wide || narrow
     if (!baseResult) return // 理论上不应该发生
     
-    pairedRows.push({
+    const row: PairedCalculationRow = {
       employee_id: employeeId,
       calculation_month: baseResult.calculation_month,
-      monthKey: monthKey,
-      wide: wide,
-      narrow: narrow
-    })
+      monthKey: monthKey
+    }
+
+    if (wide) row.wide = wide
+    if (narrow) row.narrow = narrow
+
+    pairedRows.push(row)
   })
   
   return pairedRows

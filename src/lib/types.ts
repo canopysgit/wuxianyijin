@@ -33,9 +33,15 @@ export interface PolicyRules {
   effective_start: Date // 生效开始日期
   effective_end: Date // 生效结束日期
 
-  // 基数上下限
-  ss_base_floor: number // 社保基数下限
-  ss_base_cap: number // 社保基数上限
+  // 基数上下限 - 分险种
+  pension_base_floor: number // 养老保险基数下限
+  pension_base_cap: number // 养老保险基数上限
+  medical_base_floor: number // 医疗保险基数下限
+  medical_base_cap: number // 医疗保险基数上限
+  unemployment_base_floor: number // 失业保险基数下限
+  unemployment_base_cap: number // 失业保险基数上限
+  injury_base_floor: number // 工伤保险基数下限
+  injury_base_cap: number // 工伤保险基数上限
   hf_base_floor: number // 公积金基数下限
   hf_base_cap: number // 公积金基数上限
 

@@ -4,13 +4,10 @@
 
 import { db } from './supabase'
 import { parseChineseDate } from './utils'
-import type { 
-  SalaryRecord, 
-  PolicyRules, 
-  CalculationResultNew,
-  ReferenceWageCategory,
-  CalculationTable,
-  InsuranceBaseAdjustment
+import type {
+  SalaryRecord,
+  PolicyRules,
+  CalculationInput
 } from './types'
 
 /**
@@ -41,8 +38,14 @@ export interface DetailedCalculationResult {
     step3_policy_rules: {
       year: number
       period: 'H1' | 'H2'
-      ss_base_floor: number
-      ss_base_cap: number
+      pension_base_floor: number
+      pension_base_cap: number
+      medical_base_floor: number
+      medical_base_cap: number
+      unemployment_base_floor: number
+      unemployment_base_cap: number
+      injury_base_floor: number
+      injury_base_cap: number
       hf_base_floor: number
       hf_base_cap: number
       rates: {
@@ -128,7 +131,7 @@ async function getEmployeeAverageSalaryDetailed(
   year: number,
   assumption: 'wide' | 'narrow'
 ): Promise<{ wage: number; details: string }> {
-  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId)
+  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId) as { data: SalaryRecord[] | null, error: any }
   
   if (error) {
     throw new Error(`获取员工 ${employeeId} 工资数据失败: ${error.message}`)
@@ -176,7 +179,7 @@ async function getEmployeeFirstMonthSalaryDetailed(
   employeeId: string,
   assumption: 'wide' | 'narrow'
 ): Promise<{ wage: number; details: string }> {
-  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId)
+  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId) as { data: SalaryRecord[] | null, error: any }
   
   if (error) {
     throw new Error(`获取员工 ${employeeId} 工资数据失败: ${error.message}`)
@@ -294,30 +297,38 @@ async function getApplicablePolicyRulesDetailed(
   const year = calculationMonth.getFullYear()
   const period = determinePolicyPeriod(calculationMonth)
   
-  const { data: rules, error } = await db.policyRules.getByYearAndPeriod(year, period)
+  const { data: rules, error } = await db.policyRules.getByYearAndPeriod(year, period) as { data: PolicyRules[] | null, error: any }
   
   if (error) {
     throw new Error(`获取政策规则失败: ${error.message}`)
   }
   
-  if (!rules) {
+  if (!rules || rules.length === 0) {
     throw new Error(`未找到 ${year} 年 ${period} 期间的政策规则`)
   }
-  
+
+  const rule = rules[0] // 取第一个匹配的规则
+
   return {
     year,
     period,
-    ss_base_floor: rules.ss_base_floor,
-    ss_base_cap: rules.ss_base_cap,
-    hf_base_floor: rules.hf_base_floor,
-    hf_base_cap: rules.hf_base_cap,
+    pension_base_floor: rule.pension_base_floor,
+    pension_base_cap: rule.pension_base_cap,
+    medical_base_floor: rule.medical_base_floor,
+    medical_base_cap: rule.medical_base_cap,
+    unemployment_base_floor: rule.unemployment_base_floor,
+    unemployment_base_cap: rule.unemployment_base_cap,
+    injury_base_floor: rule.injury_base_floor,
+    injury_base_cap: rule.injury_base_cap,
+    hf_base_floor: rule.hf_base_floor,
+    hf_base_cap: rule.hf_base_cap,
     rates: {
-      pension_enterprise: rules.pension_rate_enterprise,
-      medical_enterprise: rules.medical_rate_enterprise,
-      unemployment_enterprise: rules.unemployment_rate_enterprise,
-      injury_enterprise: rules.injury_rate_enterprise,
-      maternity_enterprise: rules.maternity_rate_enterprise,
-      hf_enterprise: rules.hf_rate_enterprise
+      pension_enterprise: rule.pension_rate_enterprise,
+      medical_enterprise: rule.medical_rate_enterprise,
+      unemployment_enterprise: rule.unemployment_rate_enterprise,
+      injury_enterprise: rule.injury_rate_enterprise,
+      maternity_enterprise: rule.maternity_rate_enterprise,
+      hf_enterprise: rule.hf_rate_enterprise
     }
   }
 }
@@ -330,15 +341,15 @@ function calculateContributionBasesDetailed(
   rules: DetailedCalculationResult['process']['step3_policy_rules']
 ): DetailedCalculationResult['process']['step4_contribution_bases'] {
   
-  // 社保基数计算
+  // 社保基数计算（使用养老保险基数作为统一社保基数）
   const ssBaseBeforeLimit = referenceWage
-  const ssBaseAfterLimit = Math.min(Math.max(referenceWage, rules.ss_base_floor), rules.ss_base_cap)
-  
+  const ssBaseAfterLimit = Math.min(Math.max(referenceWage, rules.pension_base_floor), rules.pension_base_cap)
+
   let ssBaseAdjustment = '无调整'
-  if (referenceWage < rules.ss_base_floor) {
-    ssBaseAdjustment = `参考工资${referenceWage.toFixed(2)}低于下限${rules.ss_base_floor}，调整至下限`
-  } else if (referenceWage > rules.ss_base_cap) {
-    ssBaseAdjustment = `参考工资${referenceWage.toFixed(2)}高于上限${rules.ss_base_cap}，调整至上限`
+  if (referenceWage < rules.pension_base_floor) {
+    ssBaseAdjustment = `参考工资${referenceWage.toFixed(2)}低于下限${rules.pension_base_floor}，调整至下限`
+  } else if (referenceWage > rules.pension_base_cap) {
+    ssBaseAdjustment = `参考工资${referenceWage.toFixed(2)}高于上限${rules.pension_base_cap}，调整至上限`
   }
   
   // 公积金基数计算  
@@ -404,7 +415,7 @@ export async function calculateSSHFDetailed(
   
   try {
     // 1. 获取员工基本信息
-    const { data: salaryRecords, error: salaryError } = await db.salaryRecords.getByEmployeeId(employeeId)
+    const { data: salaryRecords, error: salaryError } = await db.salaryRecords.getByEmployeeId(employeeId) as { data: SalaryRecord[] | null, error: any }
     
     if (salaryError || !salaryRecords || salaryRecords.length === 0) {
       throw new Error(`员工 ${employeeId} 没有工资记录`)

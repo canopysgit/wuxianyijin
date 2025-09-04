@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { SalaryRecord, SheetData, ExcelParseResult } from './excel';
+import { SalaryRecord, ExcelParseResult } from './excel';
 
 /**
  * 数据导入相关接口定义
@@ -50,17 +50,20 @@ export interface DBSalaryRecord {
  */
 function convertToDBFormat(record: SalaryRecord, sheetName: string): DBSalaryRecord {
   // 生成序号组合字段
-  const xuhao = record.sequenceNumber ? `${sheetName}-${record.sequenceNumber}` : undefined;
-  
-  return {
+  const result: DBSalaryRecord = {
     employee_id: record.employeeId,
     hire_date: record.hireDate.toISOString().split('T')[0],
     salary_month: sheetName, // 直接使用Sheet名称，如"2022年4月"
     basic_salary: record.basicSalary,
     gross_salary: record.grossSalary,
-    xuhao,
-    xuhao2: record.sequenceNumber // 原始表格序号，纯数字格式
   };
+
+  if (record.sequenceNumber) {
+    result.xuhao = `${sheetName}-${record.sequenceNumber}`;
+    result.xuhao2 = record.sequenceNumber;
+  }
+
+  return result;
 }
 
 /**
@@ -69,7 +72,7 @@ function convertToDBFormat(record: SalaryRecord, sheetName: string): DBSalaryRec
 export async function importSalaryRecords(
   records: SalaryRecord[],
   sheetName: string,
-  batchSize: number = 100
+  _batchSize: number = 100
 ): Promise<ImportResult> {
   const startTime = Date.now();
   
@@ -94,7 +97,7 @@ export async function importSalaryRecords(
     const result = await response.json();
     
     // 转换API响应为ImportResult格式
-    return {
+    const importResult: ImportResult = {
       success: result.success,
       totalRecords: result.totalRecords,
       importedRecords: result.importedRecords,
@@ -110,13 +113,18 @@ export async function importSalaryRecords(
         expectedRecords: records.length,
         parsedRecords: records.length,
         parseSuccess: true
-      },
-      postValidation: result.validation ? {
+      }
+    };
+
+    if (result.validation) {
+      importResult.postValidation = {
         databaseRecords: result.importedRecords,
         consistencyCheck: result.validation.consistencyVerified,
         validationErrors: result.validation.validationErrors || []
-      } : undefined
-    };
+      };
+    }
+
+    return importResult;
     
   } catch (error: any) {
     return {
@@ -220,21 +228,21 @@ export async function getEmployeeStats(): Promise<{
       .select('salary_month')
       .order('salary_month', { ascending: true })
       .limit(1)
-      .single();
-    
+      .single() as { data: { salary_month: string } | null };
+
     const { data: monthRangeEnd } = await supabase
       .from('salary_records')
       .select('salary_month')
       .order('salary_month', { ascending: false })
       .limit(1)
-      .single();
+      .single() as { data: { salary_month: string } | null };
     
     // 获取按年统计
     const { data: yearData } = await supabase
       .from('salary_records')
       .select('salary_month')
-      .order('salary_month');
-    
+      .order('salary_month') as { data: { salary_month: string }[] | null };
+
     const yearStats: Record<string, number> = {};
     if (yearData) {
       yearData.forEach(record => {

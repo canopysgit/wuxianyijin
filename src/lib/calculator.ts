@@ -3,7 +3,7 @@
  */
 
 import { db } from './supabase'
-import { parseChineseDate, formatChineseDate } from './utils'
+import { parseChineseDate } from './utils'
 import type { SalaryRecord, PolicyRules, CalculationResult, CalculationInput } from './types'
 
 /**
@@ -67,7 +67,7 @@ export async function getEmployeeAverageSalary(
   year: number,
   assumption: CalculationAssumption
 ): Promise<number> {
-  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId)
+  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId) as { data: SalaryRecord[] | null, error: any }
   
   if (error) {
     throw new Error(`获取员工 ${employeeId} 工资数据失败: ${error.message}`)
@@ -109,7 +109,7 @@ export async function getEmployeeFirstMonthSalary(
   employeeId: string,
   assumption: CalculationAssumption
 ): Promise<number> {
-  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId)
+  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId) as { data: SalaryRecord[] | null, error: any }
   
   if (error) {
     throw new Error(`获取员工 ${employeeId} 工资数据失败: ${error.message}`)
@@ -222,8 +222,8 @@ export function calculateContributionBases(
   referenceWage: number,
   rules: PolicyRules
 ): { ssBase: number; hfBase: number } {
-  // 社保基数计算
-  const ssBase = Math.min(Math.max(referenceWage, rules.ss_base_floor), rules.ss_base_cap)
+  // 社保基数计算（使用养老保险基数作为统一社保基数）
+  const ssBase = Math.min(Math.max(referenceWage, rules.pension_base_floor), rules.pension_base_cap)
   
   // 公积金基数计算  
   const hfBase = Math.min(Math.max(referenceWage, rules.hf_base_floor), rules.hf_base_cap)
@@ -269,7 +269,7 @@ export async function calculateSSHF(
   
   try {
     // 1. 获取员工基本信息
-    const { data: salaryRecords, error: salaryError } = await db.salaryRecords.getByEmployeeId(employeeId)
+    const { data: salaryRecords, error: salaryError } = await db.salaryRecords.getByEmployeeId(employeeId) as { data: SalaryRecord[] | null, error: any }
     
     if (salaryError || !salaryRecords || salaryRecords.length === 0) {
       throw new Error(`员工 ${employeeId} 没有工资记录`)

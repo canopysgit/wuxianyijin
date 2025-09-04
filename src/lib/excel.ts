@@ -384,13 +384,18 @@ export function parseWorksheet(worksheet: XLSX.WorkSheet, sheetName: string): Sh
           continue;
         }
         
-        records.push({
+        const record: SalaryRecord = {
           employeeId,
           hireDate,
           basicSalary,
-          grossSalary,
-          sequenceNumber
-        });
+          grossSalary
+        };
+
+        if (sequenceNumber !== undefined) {
+          record.sequenceNumber = sequenceNumber;
+        }
+
+        records.push(record);
         
         stats.validRecords++;
         const seqDisplay = sequenceNumber ? ` | 序号${sequenceNumber}` : '';

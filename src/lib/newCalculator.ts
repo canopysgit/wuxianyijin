@@ -4,9 +4,9 @@
 
 import { db } from './supabase'
 import { parseChineseDate } from './utils'
-import type { 
-  SalaryRecord, 
-  PolicyRules, 
+import type {
+  SalaryRecord,
+  PolicyRules,
   CalculationResultNew,
   ReferenceWageCategory,
   CalculationTable,
@@ -65,7 +65,7 @@ async function getEmployeeAverageSalary(
   year: number,
   assumption: CalculationAssumption
 ): Promise<number> {
-  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId)
+  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId) as { data: SalaryRecord[] | null, error: any }
   
   if (error || !records || records.length === 0) {
     throw new Error(`员工 ${employeeId} 没有工资记录`)
@@ -95,7 +95,7 @@ async function getEmployeeFirstMonthSalary(
   employeeId: string,
   assumption: CalculationAssumption
 ): Promise<number> {
-  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId)
+  const { data: records, error } = await db.salaryRecords.getByEmployeeId(employeeId) as { data: SalaryRecord[] | null, error: any }
   
   if (error || !records || records.length === 0) {
     throw new Error(`员工 ${employeeId} 没有工资记录`)
@@ -275,7 +275,7 @@ export async function calculateSSHFDetailed(
   
   try {
     // 1. 获取员工基本信息
-    const { data: salaryRecords, error: salaryError } = await db.salaryRecords.getByEmployeeId(employeeId)
+    const { data: salaryRecords, error: salaryError } = await db.salaryRecords.getByEmployeeId(employeeId) as { data: SalaryRecord[] | null, error: any }
     
     if (salaryError || !salaryRecords || salaryRecords.length === 0) {
       throw new Error(`员工 ${employeeId} 没有工资记录`)

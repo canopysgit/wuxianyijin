@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Search, Download, RotateCcw, Loader2 } from 'lucide-react'
+import { Search, RotateCcw, Loader2 } from 'lucide-react'
 
 // 可选的时间期间
 const AVAILABLE_PERIODS = [
@@ -39,8 +39,9 @@ export function QueryPanel({ onQuery, loading }: QueryPanelProps) {
       return
     }
     
+    const trimmedEmployeeId = employeeId.trim()
     const request: QueryRequest = {
-      employeeId: employeeId.trim() || undefined,
+      ...(trimmedEmployeeId && { employeeId: trimmedEmployeeId }),
       periods: selectedPeriods
     }
     

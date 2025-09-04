@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Search, Upload, BarChart3, FileText } from 'lucide-react'
 
 export default async function HomePage() {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const token = cookieStore.get('session')?.value
   const secret = process.env.AUTH_SECRET
   let username: string | null = null
@@ -52,9 +52,9 @@ export default async function HomePage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">多文件上传，自动解析与实时验证</p>
-            <Button className="w-full" asChild>
-              <Link href="/upload">进入上传页面</Link>
-            </Button>
+            <Link href="/upload">
+              <Button className="w-full">进入上传页面</Button>
+            </Link>
           </CardContent>
         </Card>
 
@@ -67,9 +67,9 @@ export default async function HomePage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">对比与明细展开，支持导出 Excel</p>
-            <Button className="w-full" asChild>
-              <Link href="/query">进入查询页面</Link>
-            </Button>
+            <Link href="/query">
+              <Button className="w-full">进入查询页面</Button>
+            </Link>
           </CardContent>
         </Card>
 

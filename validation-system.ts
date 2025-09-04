@@ -1,6 +1,6 @@
 import { supabase } from './src/lib/supabase';
-import { SalaryRecord, SheetData, ExcelParseResult, ParseStats } from './src/lib/excel';
-import { ImportResult, ImportError, DBSalaryRecord } from './src/lib/database';
+import { ExcelParseResult } from './src/lib/excel';
+import { ImportResult } from './src/lib/database';
 
 /**
  * 导入验证系统 - 确保数据完整性
@@ -174,7 +174,7 @@ export async function validatePostImport(
             .select('xuhao, employee_id')
             .eq('salary_month', sheet.sheetName)
             .not('xuhao', 'is', null)
-            .limit(10);
+            .limit(10) as { data: { xuhao?: string; employee_id: string }[] | null, error: any };
           
           if (!xuhaoError && xuhaoSample) {
             const hasXuhao = xuhaoSample.length > 0;
@@ -322,4 +322,3 @@ export function enforceValidation(validation: ComprehensiveValidation): boolean 
   return true;
 }
 
-export { ValidationReport, ValidationIssue, ComprehensiveValidation };
