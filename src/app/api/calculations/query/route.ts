@@ -6,7 +6,7 @@ import { CalculationResultNew } from '@/lib/types'
 // 查询请求类型
 interface QueryRequest {
   employeeId?: string // 员工ID（可选，空则查所有）
-  periods: string[]   // 时间期间多选，如 ['2023H1', '2024H1']
+  periods: string[]   // 时间期间多选，�?['2023H1', '2024H1']
 }
 
 // 查询响应类型
@@ -22,8 +22,7 @@ interface QueryResponse {
   }
 }
 
-// 根据期间获取对应的表名
-function getTableNames(periods: string[]): { wide: string[]; narrow: string[] } {
+// 根据期间获取对应的表�?function getTableNames(periods: string[]): { wide: string[]; narrow: string[] } {
   const wide: string[] = []
   const narrow: string[] = []
 
@@ -37,8 +36,7 @@ function getTableNames(periods: string[]): { wide: string[]; narrow: string[] } 
   return { wide, narrow }
 }
 
-// 执行跨表联合查询（分页聚合，避免单次请求返回上限导致截断）
-async function queryCalculationResults(
+// 执行跨表联合查询（分页聚合，避免单次请求返回上限导致截断�?async function queryCalculationResults(
   tableNames: string[],
   employeeId?: string
 ): Promise<CalculationResultNew[]> {
@@ -91,7 +89,7 @@ async function queryCalculationResults(
 
         const { data, error } = (await query) as any
         if (error) {
-          console.error(`查询表 ${tableName} 失败:`, error)
+          console.error(`查询�?${tableName} 失败:`, error)
           break
         }
 
@@ -110,7 +108,7 @@ async function queryCalculationResults(
         offset += pageSize
       }
     } catch (err) {
-      console.error(`查询表 ${tableName} 异常:`, err)
+      console.error(`查询�?${tableName} 异常:`, err)
       continue
     }
   }
@@ -118,7 +116,7 @@ async function queryCalculationResults(
   return results
 }
 
-// 解析 YYYYMM / YYYY-MM / YYYY-MM-01 为 UTC 月初日期
+// 解析 YYYYMM / YYYY-MM / YYYY-MM-01 �?UTC 月初日期
 function parseYYYYMM(input: string): Date {
   if (!input) return new Date('Invalid')
   const s = String(input).trim()
@@ -150,7 +148,7 @@ function calculateStatistics(
     allResults.map((r) => r.calculation_month.toISOString().substring(0, 7))
   )
   const months = Array.from(monthsSet).sort()
-  const periodRange = months.length > 0 ? `${months[0]} ~ ${months[months.length - 1]}` : '无数据'
+  const periodRange = months.length > 0 ? `${months[0]} ~ ${months[months.length - 1]}` : '无数�?
 
   return {
     totalRecords: wideResults.length + narrowResults.length,
@@ -170,19 +168,19 @@ export async function POST(request: NextRequest) {
 
     // 验证请求参数
     if (!body.periods || !Array.isArray(body.periods) || body.periods.length === 0) {
-      return NextResponse.json({ error: '请选择至少一个时间期间' }, { status: 400 })
+      return NextResponse.json({ error: '请选择至少一个时间期�? }, { status: 400 })
     }
 
     // 验证期间格式
     const validPeriodPattern = /^202[34]H[12]$/
     for (const period of body.periods) {
       if (!validPeriodPattern.test(period)) {
-        return NextResponse.json({ error: `无效的时间期间格式 ${period}` }, { status: 400 })
+        return NextResponse.json({ error: `无效的时间期间格�?${period}` }, { status: 400 })
       }
     }
 
     console.log('查询参数:', {
-      employeeId: body.employeeId || '(所有员工)',
+      employeeId: body.employeeId || '(所有员�?',
       periods: body.periods,
     })
 
@@ -214,4 +212,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
 
