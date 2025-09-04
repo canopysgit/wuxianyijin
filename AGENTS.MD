@@ -73,6 +73,44 @@
   - CI/CD 与测试完善（Jest/Playwright 集成流水线）
   - 代码健康（移除多余日志、统一风格）
 
+## 7.1) 实施计划 TODO（登录系统 + 公网部署）
+依据最新需求：关闭自助注册；无邮件验证；仅用户名+密码登录；两位用户（你与同事）权限一致；导入与查询/导出需要登录；使用自有二级域名绑定；生产环境变量已就绪。
+
+— Phase A · 认证设计与准备
+- [ ] 新建认证表 `app_users`（Supabase）：`id(uuid) / username(text, unique) / password_hash(text) / is_active(bool) / created_at`
+- [ ] 开启 RLS，仅允许 Service-Role 访问（避免被前端直接读）
+- [ ] 在 `.env.example` 增加 `AUTH_SECRET`，用于签发/校验自管会话 JWT
+- [ ] 选择哈希库（`bcryptjs`）并约定成本（saltRounds=10）
+
+— Phase B · 后端路由与中间件
+- [ ] `POST /api/auth/login`：校验 `username/password`，成功后签发 HttpOnly Cookie（JWT），SameSite=Lax，Secure in prod
+- [ ] `POST /api/auth/logout`：清除会话 Cookie
+- [ ] `lib/auth/session.ts`：封装 `getSession/requireSession/issueToken`
+- [ ] `middleware.ts`：保护以下路径（未登录跳转 `/login`）
+  - `/query` 页面
+  - `/api/calculations/*`（查询/导出相关）
+  - `/api/import-*`（导入相关）
+  - 如导入 UI 位于首页 `/`，则考虑整体保护 `/`（或保留首页公开，仅在操作时校验）
+
+— Phase C · 前端页面与 UX
+- [ ] `src/app/login/page.tsx`：用户名/密码登录页（错误提示、加载状态）
+- [ ] 增加顶栏/入口的登录/登出按钮与登录后跳转逻辑
+- [ ] 统一处理 401/403：提示未登录并跳转 `/login`
+
+— Phase D · 账户准备与策略
+- [ ] 在 Supabase 控制台创建 2 个用户记录（写入 `username` 与 `password_hash`），关闭自助注册
+- [ ] 关闭邮件验证（按需保持 `is_active=true` 即可）
+
+— Phase E · 部署与域名
+- [ ] Vercel：连接 GitHub 仓库，配置环境变量（含 `AUTH_SECRET`、Supabase 相关）
+- [ ] 临时设置 `eslint.ignoreDuringBuilds=true` 或修复构建期 lint
+- [ ] 绑定自有二级域名（新增 CNAME，Vercel 验证通过）
+- [ ] 验证登录→导入→查询/导出（≤2000 行，单 H1 范围）全链路
+
+— Phase F · 文档与移交
+- [ ] 在 AGENTS.MD 补充鉴权与部署章节的运行手册（用户创建、重置、常见错误）
+- [ ] 在 README/主页入口添加“需要登录”的说明与登录入口
+
 ## 8) 运行手册（Runbook）
 - 启动开发
   - 确认 `.env.local` 已配置 Supabase URL/ANON_KEY

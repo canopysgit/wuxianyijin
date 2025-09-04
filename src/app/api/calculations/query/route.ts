@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireSessionOr401 } from '@/lib/auth/session'
 import { supabase } from '@/lib/supabase'
 import { CalculationResultNew, CalculationTable } from '@/lib/types'
 
@@ -159,6 +160,8 @@ function calculateStatistics(
 }
 
 export async function POST(request: NextRequest) {
+  const unauthorized = await requireSessionOr401(request)
+  if (unauthorized) return unauthorized
   try {
     const body: QueryRequest = await request.json()
     

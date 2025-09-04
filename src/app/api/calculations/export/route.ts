@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireSessionOr401 } from '@/lib/auth/session'
 import { supabase } from '@/lib/supabase'
 import { CalculationResultNew } from '@/lib/types'
 import * as XLSX from 'xlsx'
@@ -167,6 +168,8 @@ function createComparisonSheet(
 }
 
 export async function POST(request: NextRequest) {
+  const unauthorized = await requireSessionOr401(request as any)
+  if (unauthorized) return unauthorized
   try {
     // Robust JSON parsing with logging to diagnose client payload issues
     const raw = await request.text()
