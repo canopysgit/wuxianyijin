@@ -34,33 +34,48 @@ async function queryExportData(
 ): Promise<CalculationResultNew[]> {
   const results: CalculationResultNew[] = []
 
+  // Supabase/PostgREST 默认每次请求最多返回 ~1000 行。
+  // 为避免“导出被默默截断”，这里对每张表做服务端分页，直到取完。
+  const pageSize = 10000 // 单次拉取条数，可视内存按需调整
+
   for (const tableName of tableNames) {
     try {
-      let query = supabase
-        .from(tableName as any)
-        .select('*')
-        .order('calculation_month', { ascending: true })
-        .order('employee_id', { ascending: true }) as any
+      let offset = 0
+      while (true) {
+        let query = supabase
+          .from(tableName as any)
+          .select('*')
+          .order('calculation_month', { ascending: true })
+          .order('employee_id', { ascending: true })
+          .range(offset, offset + pageSize - 1) as any
 
-      if (employeeId && employeeId.trim()) {
-        query = query.eq('employee_id', employeeId.trim())
-      }
+        if (employeeId && employeeId.trim()) {
+          query = query.eq('employee_id', employeeId.trim())
+        }
 
-      const { data, error } = (await query) as any
+        const { data, error } = (await query) as any
 
-      if (error) {
-        console.error(`查询表 ${tableName} 失败:`, error)
-        continue
-      }
+        if (error) {
+          console.error(`查询表 ${tableName} 失败:`, error)
+          break
+        }
 
-      if (data && data.length > 0) {
-        const formattedData = (data as any[]).map((record) => ({
+        const batch = (data || []) as any[]
+        if (batch.length === 0) {
+          break
+        }
+
+        const formattedData = batch.map((record) => ({
           ...record,
           calculation_month: parseYYYYMM(record.calculation_month as unknown as string),
           created_at: new Date(record.created_at as unknown as string),
         })) as CalculationResultNew[]
 
         results.push(...formattedData)
+
+        // 若返回条数小于 pageSize，说明已取完
+        if (batch.length < pageSize) break
+        offset += pageSize
       }
     } catch (err) {
       console.error(`查询表 ${tableName} 异常:`, err)
