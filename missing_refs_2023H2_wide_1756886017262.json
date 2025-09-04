@@ -1,0 +1,10 @@
+[
+  {
+    "period": "2023H2",
+    "assumption": "wide",
+    "employee_id": "DF-3615",
+    "hire_date": "2021-10-13",
+    "preferred_source": "avg2022",
+    "details": "avg_wage_wide_2022 and first_month_base_wide both null"
+  }
+]

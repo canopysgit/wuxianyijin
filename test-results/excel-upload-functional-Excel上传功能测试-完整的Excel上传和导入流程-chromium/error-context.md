@@ -1,0 +1,43 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - heading "五险一金尽职调查系统" [level=1] [ref=e6]
+      - paragraph [ref=e7]: 数据导入与合规性分析工具
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - heading "数据导入" [level=3] [ref=e11]:
+          - img [ref=e12]
+          - text: 数据导入
+        - generic [ref=e16]:
+          - paragraph [ref=e17]: 上传Excel工资表文件，系统将自动解析并导入员工工资数据。
+          - list [ref=e18]:
+            - listitem [ref=e19]: • 支持2022-2024年工资数据
+            - listitem [ref=e20]: • 自动识别工作表和数据格式
+            - listitem [ref=e21]: • 重复数据自动更新
+      - generic [ref=e22]:
+        - heading "合规分析" [level=3] [ref=e24]:
+          - img [ref=e25]
+          - text: 合规分析
+        - generic [ref=e28]:
+          - paragraph [ref=e29]: 基于政策规则自动计算理论缴费金额，分析合规风险。
+          - list [ref=e30]:
+            - listitem [ref=e31]: • 支持双重假设计算
+            - listitem [ref=e32]: • 动态员工分类算法
+            - listitem [ref=e33]: • 合规缺口识别
+    - generic [ref=e35]:
+      - heading "Excel工资数据导入" [level=3] [ref=e37]:
+        - img [ref=e38]
+        - text: Excel工资数据导入
+      - generic [ref=e42] [cursor=pointer]:
+        - button "Choose File" [ref=e43]
+        - img [ref=e44] [cursor=pointer]
+        - generic [ref=e47] [cursor=pointer]:
+          - paragraph [ref=e48] [cursor=pointer]: 拖拽Excel文件到此处，或点击选择文件
+          - paragraph [ref=e49] [cursor=pointer]: 支持 .xlsx 和 .xls 格式，文件名应包含年份（如"2023年工资表.xlsx"）
+  - button "Open Next.js Dev Tools" [ref=e55] [cursor=pointer]:
+    - img [ref=e56] [cursor=pointer]
+  - alert [ref=e59]
+```

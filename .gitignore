@@ -30,3 +30,8 @@ temp/
 # Local backups
 *.bak
 
+# Windows reserved device placeholder
+nul
+
+# Office temporary lock files
+~$*
