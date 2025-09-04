@@ -72,7 +72,7 @@ async function queryExportData(
 }
 
 function formatDataForExcel(results: CalculationResultNew[]): any[] {
-  const formatted = results.map((result) => ({
+  const formatted: any[] = results.map((result) => ({
     员工工号: result.employee_id,
     计算月份: result.calculation_month.toISOString().substring(0, 7),
     员工类别: result.employee_category,
@@ -100,13 +100,13 @@ function formatDataForExcel(results: CalculationResultNew[]): any[] {
     住房公积金应缴: result.hf_payment,
     理论应缴总计: result.theoretical_total,
     创建时间: result.created_at.toLocaleString('zh-CN'),
-  }))
+  })) as any[];
 
   const totalRecords = formatted.length
   const uniqueEmployees = new Set(results.map((r) => r.employee_id)).size
   const totalTheoreticalAmount = results.reduce((sum, r) => sum + r.theoretical_total, 0)
 
-  formatted.push({})
+  formatted.push({} as any)
   formatted.push({ 员工工号: '=== 统计汇总 ===' } as any)
   formatted.push({ 员工工号: '记录总数', 计算月份: totalRecords } as any)
   formatted.push({ 员工工号: '员工数量', 计算月份: uniqueEmployees, 理论应缴总计: totalTheoreticalAmount } as any)

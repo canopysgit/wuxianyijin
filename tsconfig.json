@@ -29,5 +29,13 @@
     "exactOptionalPropertyTypes": true
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "存档/**/*"]
+  "exclude": [
+    "node_modules",
+    "存档/**/*",
+    "playwright.config.ts",
+    "playwright.config.js",
+    "tests",
+    "playwright-report",
+    "playwright-results"
+  ]
 }
